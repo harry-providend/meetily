@@ -1,4 +1,5 @@
 use crate::database::models::SummaryProcess;
+use crate::database::repositories::version::VersionsRepository;
 use chrono::Utc;
 use serde_json::Value;
 use sqlx::SqlitePool;
@@ -129,6 +130,22 @@ impl SummaryProcessesRepository {
         let result_str = serde_json::to_string(&result)
             .map_err(|e| sqlx::Error::Protocol(format!("Failed to serialize result: {}", e)))?;
 
+        let mut tx = pool.begin().await?;
+
+        // The backup holds the summary this generation is about to replace. Archiving
+        // here rather than at generation start means failed runs leave no version behind.
+        let superseded: Option<String> =
+            sqlx::query_scalar("SELECT result_backup FROM summary_processes WHERE meeting_id = ?")
+                .bind(meeting_id)
+                .fetch_optional(&mut *tx)
+                .await?
+                .flatten();
+
+        if let Some(superseded) = superseded {
+            VersionsRepository::archive_summary(&mut *tx, meeting_id, &superseded, "regeneration")
+                .await?;
+        }
+
         sqlx::query(
             r#"
             UPDATE summary_processes
@@ -142,8 +159,10 @@ impl SummaryProcessesRepository {
         .bind(chunk_count)
         .bind(processing_time)
         .bind(meeting_id)
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
+
+        tx.commit().await?;
         log_info!(
             "Summary completed and backup cleared for meeting_id: {}",
             meeting_id

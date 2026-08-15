@@ -2,7 +2,7 @@
 
 import { Button } from '@/components/ui/button';
 import { ButtonGroup } from '@/components/ui/button-group';
-import { Copy, Download, Save, Loader2, Search, FolderOpen } from 'lucide-react';
+import { Copy, Download, History, Save, Loader2, Search, FolderOpen } from 'lucide-react';
 import Analytics from '@/lib/analytics';
 
 interface SummaryUpdaterButtonGroupProps {
@@ -11,6 +11,7 @@ interface SummaryUpdaterButtonGroupProps {
   onSave: () => Promise<void>;
   onCopy: () => Promise<void>;
   onExport: () => Promise<void>;
+  onOpenVersionHistory: () => void;
   onFind?: () => void;
   onOpenFolder: () => Promise<void>;
   hasSummary: boolean;
@@ -22,6 +23,7 @@ export function SummaryUpdaterButtonGroup({
   onSave,
   onCopy,
   onExport,
+  onOpenVersionHistory,
   onFind,
   onOpenFolder,
   hasSummary
@@ -83,6 +85,21 @@ export function SummaryUpdaterButtonGroup({
       >
         <Download />
         <span className="hidden lg:inline">Export</span>
+      </Button>
+
+      {/* History button */}
+      <Button
+        variant="outline"
+        size="sm"
+        title="Summary version history"
+        onClick={() => {
+          Analytics.trackButtonClick('summary_history', 'meeting_details');
+          onOpenVersionHistory();
+        }}
+        className="cursor-pointer"
+      >
+        <History />
+        <span className="hidden lg:inline">History</span>
       </Button>
 
       {/* Find button */}

@@ -12,6 +12,7 @@ interface TranscriptPanelProps {
   onPromptChange: (value: string) => void;
   onCopyTranscript: () => void;
   onExportTranscript: () => void;
+  onOpenVersionHistory: () => void;
   onOpenMeetingFolder: () => Promise<void>;
   isRecording: boolean;
   disableAutoScroll?: boolean;
@@ -37,6 +38,7 @@ export function TranscriptPanel({
   onPromptChange,
   onCopyTranscript,
   onExportTranscript,
+  onOpenVersionHistory,
   onOpenMeetingFolder,
   isRecording,
   disableAutoScroll = false,
@@ -74,6 +76,7 @@ export function TranscriptPanel({
           transcriptCount={usePagination ? (totalCount ?? convertedSegments.length) : (transcripts?.length || 0)}
           onCopyTranscript={onCopyTranscript}
           onExportTranscript={onExportTranscript}
+          onOpenVersionHistory={onOpenVersionHistory}
           onOpenMeetingFolder={onOpenMeetingFolder}
           meetingId={meetingId}
           meetingFolderPath={meetingFolderPath}

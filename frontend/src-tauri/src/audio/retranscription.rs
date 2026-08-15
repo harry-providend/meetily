@@ -433,6 +433,15 @@ async fn run_retranscription<R: Runtime>(
         .await
         .map_err(|e| anyhow!("Failed to start transaction: {}", e))?;
 
+    // Snapshot inside the same transaction so the old transcript survives this replace
+    crate::database::repositories::version::VersionsRepository::archive_transcript(
+        &mut *tx,
+        &meeting_id,
+        "retranscription",
+    )
+    .await
+    .map_err(|e| anyhow!("Failed to archive existing transcripts: {}", e))?;
+
     sqlx::query("DELETE FROM transcripts WHERE meeting_id = ?")
         .bind(&meeting_id)
         .execute(&mut *tx)

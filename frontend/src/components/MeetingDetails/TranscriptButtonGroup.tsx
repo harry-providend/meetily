@@ -3,7 +3,7 @@
 import { useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { ButtonGroup } from '@/components/ui/button-group';
-import { Copy, Download, FolderOpen, RefreshCw } from 'lucide-react';
+import { Copy, Download, FolderOpen, History, RefreshCw } from 'lucide-react';
 import Analytics from '@/lib/analytics';
 import { RetranscribeDialog } from './RetranscribeDialog';
 import { useConfig } from '@/contexts/ConfigContext';
@@ -13,6 +13,7 @@ interface TranscriptButtonGroupProps {
   transcriptCount: number;
   onCopyTranscript: () => void;
   onExportTranscript: () => void;
+  onOpenVersionHistory: () => void;
   onOpenMeetingFolder: () => Promise<void>;
   meetingId?: string;
   meetingFolderPath?: string | null;
@@ -24,6 +25,7 @@ export function TranscriptButtonGroup({
   transcriptCount,
   onCopyTranscript,
   onExportTranscript,
+  onOpenVersionHistory,
   onOpenMeetingFolder,
   meetingId,
   meetingFolderPath,
@@ -68,6 +70,19 @@ export function TranscriptButtonGroup({
         >
           <Download />
           <span className="hidden lg:inline">Export</span>
+        </Button>
+
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            Analytics.trackButtonClick('transcript_history', 'meeting_details');
+            onOpenVersionHistory();
+          }}
+          title="Transcript version history"
+        >
+          <History />
+          <span className="hidden lg:inline">History</span>
         </Button>
 
         <Button
