@@ -67,7 +67,7 @@ export function TemplateManagerDialog({
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
-  // True while composing a brand new template that has no row yet.
+  // Composing a new template that has no row yet
   const [isCreating, setIsCreating] = useState(false);
 
   const loadTemplate = useCallback(async (templateId: string) => {
@@ -88,7 +88,7 @@ export function TemplateManagerDialog({
     }
   }, [getTemplateDetails]);
 
-  // Open on the requested template (or the first available one).
+  // Open on the requested template, or the first available
   useEffect(() => {
     if (!open) return;
     const target = initialTemplateId && templates.some((t) => t.id === initialTemplateId)
@@ -100,8 +100,7 @@ export function TemplateManagerDialog({
       setDraft(createEmptyTemplate());
       setIsCreating(true);
     }
-    // Only re-run when the dialog is opened, not on every template list refresh,
-    // so a save does not discard the editor state.
+    // Only re-run on open, so a save does not discard editor state
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -179,7 +178,7 @@ export function TemplateManagerDialog({
     setIsSaving(true);
     try {
       const savedId = await saveTemplate({
-        // Omitting the id creates a new template and derives one from the name.
+        // Omitting the id creates a new template
         id: isCreating ? undefined : draft.id,
         name: draft.name.trim(),
         description: draft.description.trim(),
@@ -187,7 +186,7 @@ export function TemplateManagerDialog({
           ...section,
           title: section.title.trim(),
           instruction: section.instruction.trim(),
-          // Drop empty optional hints so they are not stored as blank strings.
+          // Drop empty hints rather than storing blank strings
           item_format: section.item_format?.trim() || undefined,
           example_item_format: section.example_item_format?.trim() || undefined,
         })),

@@ -19,8 +19,7 @@ export function useTemplates() {
       const templates = await invokeTauri<TemplateInfo[]>('api_list_templates');
       setAvailableTemplates(templates);
 
-      // If the selected template was deleted elsewhere, fall back to a template
-      // that still exists so summary generation cannot target a missing id.
+      // Fall back if the selected template was deleted
       setSelectedTemplate((current) => {
         if (templates.some((t) => t.id === current)) return current;
         return templates.find((t) => t.id === DEFAULT_TEMPLATE_ID)?.id

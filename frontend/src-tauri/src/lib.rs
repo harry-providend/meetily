@@ -493,9 +493,7 @@ pub fn run() {
             //     });
             // }
 
-            // Initialize bundled templates directory for template seeding.
-            // Must run before the database is initialized: seeding reads this
-            // directory to populate the summary_templates table.
+            // Must precede database init, which seeds templates from this directory
             log::info!("Initializing bundled templates directory...");
             if let Ok(resource_path) = _app.handle().path().resource_dir() {
                 let templates_dir = resource_path.join("templates");

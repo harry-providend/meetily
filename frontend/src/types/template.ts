@@ -67,10 +67,7 @@ export function createEmptyTemplate(): TemplateDetails {
   };
 }
 
-/**
- * Mirrors the validation in `Template::validate` on the Rust side so the editor
- * can surface problems inline instead of only on save.
- */
+/** Mirrors `Template::validate` in Rust so the editor can report errors inline. */
 export function validateTemplate(template: TemplateDetails): string | null {
   if (!template.name.trim()) return 'Template name cannot be empty';
   if (!template.description.trim()) return 'Template description cannot be empty';

@@ -1,10 +1,5 @@
--- Move summary templates from JSON files on disk into SQLite.
---
--- Built-in templates (shipped as bundled resources / embedded constants) are
--- seeded into this table at startup with is_builtin = 1. Editing a built-in
--- template sets user_modified = 1, which makes the seeder skip it on subsequent
--- launches so user edits survive app upgrades. "Reset to default" clears the
--- flag and lets the seeder overwrite the row again.
+-- Add summary_templates table; templates were previously JSON files on disk.
+-- Built-ins are seeded at startup; user_modified marks rows the seeder must skip.
 CREATE TABLE IF NOT EXISTS summary_templates (
     id            TEXT PRIMARY KEY NOT NULL,
     name          TEXT NOT NULL,
@@ -16,5 +11,4 @@ CREATE TABLE IF NOT EXISTS summary_templates (
     updated_at    TEXT NOT NULL
 );
 
--- Supports "recently edited first" ordering in the template picker.
 CREATE INDEX IF NOT EXISTS idx_summary_templates_updated_at ON summary_templates(updated_at);

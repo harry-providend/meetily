@@ -1,40 +1,18 @@
 //! Meeting summary template management
 //!
-//! This module provides a flexible template system for generating meeting summaries.
-//! It supports both built-in templates (embedded in the binary) and custom user templates
-//! (loaded from the application data directory).
-//!
-//! # Architecture
-//!
-//! Templates live in the `summary_templates` table of the app database. Templates
-//! shipped with the app (bundled resource JSON files, plus constants embedded at
-//! compile time) are seeded into that table at startup with `is_builtin = 1`.
-//!
-//! - **Seeding**: re-runs on every launch, but skips rows the user has edited, so
-//!   app upgrades never clobber customizations of a shipped template.
-//! - **Editing a built-in**: sets `user_modified = 1`; "reset to default" clears
-//!   the flag and lets the next seed pass restore the shipped content.
-//! - **Fallback**: if a row is missing entirely, the embedded constants still
-//!   answer for the two core templates so summary generation cannot be stranded.
-//! - **Legacy import**: JSON files from the pre-SQLite custom templates directory
-//!   are imported once at startup, then the directory is archived.
-//!
-//! # Usage
+//! Templates live in the `summary_templates` table. Those shipped with the app
+//! (bundled resource JSON plus embedded constants) are seeded there at startup
+//! with `is_builtin = 1`; seeding skips rows flagged `user_modified` so edits
+//! survive app upgrades, and reset clears the flag to restore the original.
+//! The embedded constants remain a fallback if a row is missing entirely.
 //!
 //! ```no_run
 //! # async fn example(pool: &sqlx::SqlitePool) -> Result<(), String> {
 //! use app_lib::summary::templates;
 //!
-//! // Load a specific template
 //! let template = templates::get_template(pool, "daily_standup").await?;
-//!
-//! // Generate markdown structure
 //! let markdown = template.to_markdown_structure();
-//!
-//! // Generate LLM instructions
 //! let instructions = template.to_section_instructions();
-//!
-//! // List available template ids
 //! let available = templates::list_template_ids(pool).await?;
 //! # Ok(())
 //! # }
@@ -57,8 +35,7 @@ mod tests {
     use crate::database::repositories::template::TemplatesRepository;
     use sqlx::SqlitePool;
 
-    /// In-memory database with the real migrations applied, seeded with the
-    /// templates shipped in the binary.
+    /// In-memory database with the real migrations applied, then seeded.
     async fn seeded_pool() -> SqlitePool {
         let pool = SqlitePool::connect("sqlite::memory:")
             .await
@@ -123,7 +100,7 @@ mod tests {
         .await
         .expect("edit builtin");
 
-        // An app upgrade re-runs the seeder; the edit must not be clobbered.
+        // An app upgrade re-runs the seeder
         seed_shipped_templates(&pool).await.expect("re-seed");
 
         let template = get_template(&pool, "standard_meeting")

@@ -18,13 +18,7 @@ pub fn set_bundled_templates_dir(path: PathBuf) {
     }
 }
 
-/// Legacy on-disk custom templates directory.
-///
-/// Templates now live in SQLite. This path is only read once at startup so that
-/// anyone who dropped JSON files here before the move keeps their templates:
-/// - macOS: ~/Library/Application Support/Meetily/templates/
-/// - Windows: %APPDATA%\Meetily\templates\
-/// - Linux: ~/.config/Meetily/templates/
+/// Pre-SQLite custom templates directory, read once at startup for the import.
 fn legacy_custom_templates_dir() -> Option<PathBuf> {
     let mut path = dirs::data_dir()?;
     path.push("Meetily");
@@ -32,9 +26,7 @@ fn legacy_custom_templates_dir() -> Option<PathBuf> {
     Some(path)
 }
 
-/// A template identifier is used as a primary key, and previously as a filename.
-/// Constrain it to a slug so it stays safe for export filenames and legible in
-/// the UI.
+/// Constrains an id to a slug, keeping it safe as a primary key and a filename.
 pub fn sanitize_template_id(raw: &str) -> Result<String, String> {
     let slug: String = raw
         .trim()
@@ -47,7 +39,7 @@ pub fn sanitize_template_id(raw: &str) -> Result<String, String> {
         .collect();
 
     let slug = slug.trim_matches('_').to_string();
-    // Collapse runs of underscores introduced by the mapping above.
+    // Collapse the underscore runs the mapping above introduces
     let mut collapsed = String::with_capacity(slug.len());
     let mut last_underscore = false;
     for c in slug.chars() {
@@ -73,8 +65,7 @@ pub fn sanitize_template_id(raw: &str) -> Result<String, String> {
     Ok(collapsed)
 }
 
-/// Derive a template id from a display name, appending a numeric suffix until it
-/// no longer collides with an existing row.
+/// Derives an id from a display name, suffixing until it stops colliding.
 pub async fn derive_unique_id(pool: &SqlitePool, name: &str) -> Result<String, String> {
     let base = sanitize_template_id(name)?;
 
@@ -112,9 +103,7 @@ fn read_bundled_template(template_id: &str) -> Option<String> {
     }
 }
 
-/// Collect every template shipped with the app: bundled resource JSON files plus
-/// the constants embedded in the binary. Bundled files win when both provide the
-/// same id, since resources can ship fixes without a code change.
+/// Collects bundled resource files plus embedded constants; bundled wins on a tie.
 fn collect_shipped_templates() -> Vec<(String, String)> {
     let mut shipped: Vec<(String, String)> = Vec::new();
     let mut seen: Vec<String> = Vec::new();
@@ -153,19 +142,14 @@ fn collect_shipped_templates() -> Vec<(String, String)> {
     shipped
 }
 
-/// Seed shipped templates into the database and import any legacy on-disk
-/// templates. Safe to run on every startup: built-ins the user has edited are
-/// left alone, and legacy files are only inserted when the id is absent.
+/// Seeds shipped templates and imports legacy ones. Safe to run on every startup.
 pub async fn seed_templates(pool: &SqlitePool) -> Result<(), String> {
     seed_shipped_templates(pool).await?;
     import_legacy_templates(pool).await;
     Ok(())
 }
 
-/// Seeds only the templates shipped with the app.
-///
-/// Split out from [`seed_templates`] so it can be exercised without touching the
-/// user's data directory.
+/// Split from `seed_templates` so tests can seed without touching the data directory.
 pub async fn seed_shipped_templates(pool: &SqlitePool) -> Result<(), String> {
     for (id, json) in collect_shipped_templates() {
         let template = match validate_and_parse_template(&json) {
@@ -193,10 +177,7 @@ pub async fn seed_shipped_templates(pool: &SqlitePool) -> Result<(), String> {
     Ok(())
 }
 
-/// One-time import of the pre-SQLite templates directory.
-///
-/// Files whose id is already present are skipped. Once every file is accounted
-/// for, the directory is renamed so the import does not run again.
+/// One-time import of the pre-SQLite templates directory, skipping ids already present.
 async fn import_legacy_templates(pool: &SqlitePool) {
     let Some(legacy_dir) = legacy_custom_templates_dir() else {
         return;
@@ -291,8 +272,7 @@ async fn import_legacy_templates(pool: &SqlitePool) {
         return;
     }
 
-    // Everything landed in the database. Rename rather than delete so the user's
-    // original files remain recoverable.
+    // Rename rather than delete so the originals stay recoverable
     let archived = legacy_dir.with_file_name("templates.imported");
     match std::fs::rename(&legacy_dir, &archived) {
         Ok(_) => info!(
@@ -303,11 +283,7 @@ async fn import_legacy_templates(pool: &SqlitePool) {
     }
 }
 
-/// Load and parse a template by identifier.
-///
-/// Reads from SQLite, falling back to the embedded constants if the row is
-/// missing so a failed seed can never leave summary generation without a
-/// template.
+/// Loads a template, falling back to the embedded copy if the row is missing.
 pub async fn get_template(pool: &SqlitePool, template_id: &str) -> Result<Template, String> {
     debug!("Loading template: {}", template_id);
 
@@ -345,13 +321,7 @@ pub async fn get_template(pool: &SqlitePool, template_id: &str) -> Result<Templa
     ))
 }
 
-/// Validate and parse template JSON
-///
-/// # Arguments
-/// * `json_content` - Raw JSON string
-///
-/// # Returns
-/// Parsed and validated Template struct
+/// Parses and validates raw template JSON.
 pub fn validate_and_parse_template(json_content: &str) -> Result<Template, String> {
     let template: Template = serde_json::from_str(json_content)
         .map_err(|e| format!("Failed to parse template JSON: {}", e))?;

@@ -17,12 +17,10 @@ pub struct TemplateInfo {
     /// Brief description of the template's purpose
     pub description: String,
 
-    /// True when the template ships with the app. Built-ins can be edited and
-    /// reset, but not deleted.
+    /// Ships with the app: editable and resettable, but not deletable.
     pub is_builtin: bool,
 
-    /// True when a built-in has been edited by the user, meaning "reset to
-    /// default" is available.
+    /// A built-in the user has edited, so reset applies.
     pub user_modified: bool,
 
     /// RFC 3339 timestamp of the last edit
@@ -54,17 +52,14 @@ pub struct TemplateDetails {
 /// Payload for creating or updating a template
 #[derive(Debug, Deserialize)]
 pub struct SaveTemplateRequest {
-    /// Existing identifier when updating. Omit to create, in which case an id is
-    /// derived from the name.
+    /// Omit to create; an id is then derived from the name.
     pub id: Option<String>,
     pub name: String,
     pub description: String,
     pub sections: Vec<TemplateSection>,
 }
 
-/// Lists all available templates
-///
-/// Built-in templates are returned first, then user templates alphabetically.
+/// Lists all templates, built-ins first.
 #[tauri::command]
 pub async fn api_list_templates<R: Runtime>(
     _app: tauri::AppHandle<R>,
@@ -93,10 +88,7 @@ pub async fn api_list_templates<R: Runtime>(
     Ok(template_infos)
 }
 
-/// Gets the full definition of a template, including per-section instructions.
-///
-/// This is what backs the template editor, so it returns whole `TemplateSection`
-/// values rather than just section titles.
+/// Gets the full definition backing the editor, sections included.
 #[tauri::command]
 pub async fn api_get_template_details<R: Runtime>(
     _app: tauri::AppHandle<R>,
@@ -108,8 +100,7 @@ pub async fn api_get_template_details<R: Runtime>(
     let pool = state.db_manager.pool();
     let template = templates::get_template(pool, &template_id).await?;
 
-    // Flags come from the row when present; a template answered by the embedded
-    // fallback is by definition an unmodified built-in.
+    // A template answered by the embedded fallback is an unmodified built-in
     let (is_builtin, user_modified) = match TemplatesRepository::get(pool, &template_id).await {
         Ok(Some(row)) => (row.is_builtin != 0, row.user_modified != 0),
         Ok(None) => (true, false),
@@ -129,10 +120,7 @@ pub async fn api_get_template_details<R: Runtime>(
     })
 }
 
-/// Creates or updates a template.
-///
-/// Returns the identifier of the saved template, which for a newly created
-/// template is derived from its name.
+/// Creates or updates a template, returning the saved id.
 #[tauri::command]
 pub async fn api_save_template<R: Runtime>(
     _app: tauri::AppHandle<R>,
@@ -180,10 +168,7 @@ pub async fn api_save_template<R: Runtime>(
     Ok(id)
 }
 
-/// Deletes a user-authored template.
-///
-/// Built-in templates cannot be deleted; use `api_reset_template` to restore one
-/// to its shipped content.
+/// Deletes a user-authored template; built-ins must be reset instead.
 #[tauri::command]
 pub async fn api_delete_template<R: Runtime>(
     _app: tauri::AppHandle<R>,
@@ -232,8 +217,7 @@ pub async fn api_reset_template<R: Runtime>(
         return Err("Only built-in templates can be reset to default".to_string());
     }
 
-    // Clearing the flag makes the row eligible for the seeder again, which then
-    // rewrites it from the shipped definition.
+    // Clearing the flag makes the row eligible for seeding again
     TemplatesRepository::clear_user_modified(pool, &id)
         .await
         .map_err(|e| format!("Failed to reset template: {}", e))?;
@@ -245,13 +229,7 @@ pub async fn api_reset_template<R: Runtime>(
     Ok(())
 }
 
-/// Validates a template JSON string
-///
-/// Used by the template editor's import flow to check a pasted or imported
-/// definition before saving it.
-///
-/// # Returns
-/// Ok(template_name) if valid, Err(error_message) if invalid
+/// Validates raw template JSON, returning the template name.
 #[tauri::command]
 pub async fn api_validate_template<R: Runtime>(
     _app: tauri::AppHandle<R>,

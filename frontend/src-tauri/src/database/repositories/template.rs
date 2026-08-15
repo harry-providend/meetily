@@ -5,7 +5,6 @@ use sqlx::SqlitePool;
 pub struct TemplatesRepository;
 
 impl TemplatesRepository {
-    /// Fetches a single template row by identifier.
     pub async fn get(
         pool: &SqlitePool,
         id: &str,
@@ -16,10 +15,7 @@ impl TemplatesRepository {
             .await
     }
 
-    /// Lists every template, built-in ones first, then alphabetically by name.
-    ///
-    /// Built-ins lead so the familiar defaults stay at the top of the picker even
-    /// after a user adds their own templates.
+    /// Lists all templates, built-ins first so the defaults stay at the top of the picker.
     pub async fn list(pool: &SqlitePool) -> Result<Vec<SummaryTemplateRow>, sqlx::Error> {
         sqlx::query_as::<_, SummaryTemplateRow>(
             "SELECT * FROM summary_templates ORDER BY is_builtin DESC, name COLLATE NOCASE ASC",
@@ -28,7 +24,6 @@ impl TemplatesRepository {
         .await
     }
 
-    /// Returns true when a template with this identifier already exists.
     pub async fn exists(pool: &SqlitePool, id: &str) -> Result<bool, sqlx::Error> {
         let row: Option<(i64,)> = sqlx::query_as("SELECT 1 FROM summary_templates WHERE id = ?")
             .bind(id)
@@ -37,10 +32,7 @@ impl TemplatesRepository {
         Ok(row.is_some())
     }
 
-    /// Inserts or updates a user-authored template.
-    ///
-    /// Preserves `is_builtin` and `created_at` on an existing row, and marks the
-    /// row `user_modified = 1` so the startup seeder stops overwriting it.
+    /// Saves a user edit, preserving is_builtin and flagging the row so seeding skips it.
     pub async fn upsert_user_template(
         pool: &SqlitePool,
         id: &str,
@@ -74,10 +66,7 @@ impl TemplatesRepository {
         Ok(())
     }
 
-    /// Seeds a built-in template.
-    ///
-    /// Skips rows the user has edited (`user_modified = 1`) so app upgrades never
-    /// clobber customizations of a shipped template.
+    /// Seeds a shipped template, skipping rows the user has edited.
     pub async fn seed_builtin(
         pool: &SqlitePool,
         id: &str,
@@ -112,10 +101,7 @@ impl TemplatesRepository {
         Ok(())
     }
 
-    /// Imports a template discovered in the legacy on-disk templates directory.
-    ///
-    /// Only inserts when the identifier is absent, so a one-time import can never
-    /// overwrite a seeded built-in or a template the user has since edited.
+    /// Inserts only when the id is free, so the legacy import can never overwrite.
     pub async fn insert_if_absent(
         pool: &SqlitePool,
         id: &str,
@@ -145,7 +131,6 @@ impl TemplatesRepository {
         Ok(result.rows_affected() > 0)
     }
 
-    /// Deletes a template outright. Used for user-authored templates.
     pub async fn delete(pool: &SqlitePool, id: &str) -> Result<bool, sqlx::Error> {
         let result = sqlx::query("DELETE FROM summary_templates WHERE id = ?")
             .bind(id)
@@ -155,8 +140,7 @@ impl TemplatesRepository {
         Ok(result.rows_affected() > 0)
     }
 
-    /// Clears the `user_modified` flag on a built-in template so the next seed
-    /// pass restores its shipped content.
+    /// Makes a built-in eligible for seeding again, which restores its shipped content.
     pub async fn clear_user_modified(pool: &SqlitePool, id: &str) -> Result<bool, sqlx::Error> {
         let result =
             sqlx::query("UPDATE summary_templates SET user_modified = 0 WHERE id = ? AND is_builtin = 1")
