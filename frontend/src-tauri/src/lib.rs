@@ -493,13 +493,9 @@ pub fn run() {
             //     });
             // }
 
-            // Initialize database (handles first launch detection and conditional setup)
-            tauri::async_runtime::block_on(async {
-                database::setup::initialize_database_on_startup(&_app.handle()).await
-            })
-            .expect("Failed to initialize database");
-
-            // Initialize bundled templates directory for dynamic template discovery
+            // Initialize bundled templates directory for template seeding.
+            // Must run before the database is initialized: seeding reads this
+            // directory to populate the summary_templates table.
             log::info!("Initializing bundled templates directory...");
             if let Ok(resource_path) = _app.handle().path().resource_dir() {
                 let templates_dir = resource_path.join("templates");
@@ -508,6 +504,12 @@ pub fn run() {
             } else {
                 log::warn!("Failed to resolve resource directory for templates");
             }
+
+            // Initialize database (handles first launch detection and conditional setup)
+            tauri::async_runtime::block_on(async {
+                database::setup::initialize_database_on_startup(&_app.handle()).await
+            })
+            .expect("Failed to initialize database");
 
             Ok(())
         })
@@ -671,6 +673,9 @@ pub fn run() {
             summary::template_commands::api_list_templates,
             summary::template_commands::api_get_template_details,
             summary::template_commands::api_validate_template,
+            summary::template_commands::api_save_template,
+            summary::template_commands::api_delete_template,
+            summary::template_commands::api_reset_template,
             // Built-in AI commands
             summary::summary_engine::commands::builtin_ai_list_models,
             summary::summary_engine::commands::builtin_ai_get_model_info,

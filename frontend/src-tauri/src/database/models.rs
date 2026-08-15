@@ -107,6 +107,23 @@ impl Setting {
     }
 }
 
+/// A summary template row.
+///
+/// `sections_json` holds the serialized `Vec<TemplateSection>`. Sections are always
+/// read and written as a unit and their order is implicit in the array, so a child
+/// table would only add an ordering column and a join.
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
+pub struct SummaryTemplateRow {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub sections_json: String,
+    pub is_builtin: i64,
+    pub user_modified: i64,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
 pub struct TranscriptSetting {
     pub id: String,

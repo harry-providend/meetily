@@ -14,9 +14,10 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Sparkles, Settings, Loader2, FileText, Check, Square } from 'lucide-react';
+import { Sparkles, Settings, Loader2, FileText, Check, Square, Pencil } from 'lucide-react';
 import Analytics from '@/lib/analytics';
 import { invoke } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
@@ -36,6 +37,8 @@ interface SummaryGeneratorButtonGroupProps {
   availableTemplates: Array<{ id: string, name: string, description: string }>;
   selectedTemplate: string;
   onTemplateSelect: (templateId: string, templateName: string) => void;
+  /** Opens the template editor. Omit to hide the "Manage templates" entry. */
+  onManageTemplates?: (templateId?: string) => void;
   hasTranscripts?: boolean;
   hasSummary?: boolean;
   isModelConfigLoading?: boolean;
@@ -53,6 +56,7 @@ export function SummaryGeneratorButtonGroup({
   availableTemplates,
   selectedTemplate,
   onTemplateSelect,
+  onManageTemplates,
   hasTranscripts = true,
   hasSummary = false,
   isModelConfigLoading = false,
@@ -325,7 +329,7 @@ export function SummaryGeneratorButtonGroup({
       </Dialog>
 
       {/* Template selector dropdown */}
-      {availableTemplates.length > 0 && (
+      {(availableTemplates.length > 0 || onManageTemplates) && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
@@ -352,6 +356,21 @@ export function SummaryGeneratorButtonGroup({
               </DropdownMenuItem>
             ))}
 
+            {onManageTemplates && (
+              <>
+                {availableTemplates.length > 0 && <DropdownMenuSeparator />}
+                <DropdownMenuItem
+                  onClick={() => {
+                    Analytics.trackButtonClick('manage_templates', 'meeting_details');
+                    onManageTemplates(selectedTemplate);
+                  }}
+                  className="flex items-center gap-2"
+                >
+                  <Pencil className="h-4 w-4" />
+                  <span>Manage templates...</span>
+                </DropdownMenuItem>
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       )}

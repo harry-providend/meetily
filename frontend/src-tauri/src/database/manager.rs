@@ -34,6 +34,16 @@ impl DatabaseManager {
 
         sqlx::migrate!("./migrations").run(&pool).await?;
 
+        // Seed summary templates shipped with the app. Every path that produces a
+        // DatabaseManager (normal startup, fresh install, legacy import) goes
+        // through here, so this is the one place that covers them all.
+        //
+        // A seeding failure must not block startup: the embedded fallback in the
+        // templates module still answers for the core templates.
+        if let Err(e) = crate::summary::templates::seed_templates(&pool).await {
+            log::warn!("Failed to seed summary templates: {}", e);
+        }
+
         Ok(DatabaseManager { pool })
     }
 
