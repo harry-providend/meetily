@@ -4,3 +4,4 @@ pub mod summary;
 pub mod template;
 pub mod transcript;
 pub mod transcript_chunk;
+pub mod version;

@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { TranscriptPanel } from '@/components/MeetingDetails/TranscriptPanel';
 import { SummaryPanel } from '@/components/MeetingDetails/SummaryPanel';
 import { TemplateManagerDialog } from '@/components/MeetingDetails/TemplateManagerDialog';
+import { VersionHistoryDialog } from '@/components/MeetingDetails/VersionHistoryDialog';
 import { ModelConfig } from '@/components/ModelSettingsModal';
 
 // Custom hooks
@@ -18,6 +19,7 @@ import { useTemplates } from '@/hooks/meeting-details/useTemplates';
 import { useCopyOperations } from '@/hooks/meeting-details/useCopyOperations';
 import { useMeetingOperations } from '@/hooks/meeting-details/useMeetingOperations';
 import { useConfig } from '@/contexts/ConfigContext';
+import type { VersionKind } from '@/types/version';
 
 export default function PageContent({
   meeting,
@@ -142,6 +144,9 @@ export default function PageContent({
     setIsTemplateManagerOpen(true);
   };
 
+  // Rendered at page level so it outlives the panel that opened it
+  const [historyKind, setHistoryKind] = useState<VersionKind | null>(null);
+
   // Track page view
   useEffect(() => {
     Analytics.trackPageView('meeting_details');
@@ -185,6 +190,7 @@ export default function PageContent({
           onPromptChange={setCustomPrompt}
           onCopyTranscript={copyOperations.handleCopyTranscript}
           onExportTranscript={copyOperations.handleExportTranscript}
+          onOpenVersionHistory={() => setHistoryKind('transcript')}
           onOpenMeetingFolder={meetingOperations.handleOpenMeetingFolder}
           isRecording={isRecording}
           disableAutoScroll={true}
@@ -214,6 +220,7 @@ export default function PageContent({
           onSaveAll={meetingData.saveAllChanges}
           onCopySummary={copyOperations.handleCopySummary}
           onExportSummary={copyOperations.handleExportSummary}
+          onOpenVersionHistory={() => setHistoryKind('summary')}
           onOpenFolder={meetingOperations.handleOpenMeetingFolder}
           aiSummary={meetingData.aiSummary}
           summaryStatus={summaryGeneration.summaryStatus}
@@ -250,6 +257,23 @@ export default function PageContent({
         resetTemplate={templates.resetTemplate}
         initialTemplateId={templateManagerInitialId}
       />
+
+      {historyKind && (
+        <VersionHistoryDialog
+          open
+          onOpenChange={(open) => !open && setHistoryKind(null)}
+          kind={historyKind}
+          meetingId={meeting.id}
+          meetingTitle={meetingData.meetingTitle}
+          onRestored={async () => {
+            if (historyKind === 'transcript') {
+              await onRefetchTranscripts?.();
+            } else {
+              await onMeetingUpdated?.();
+            }
+          }}
+        />
+      )}
     </motion.div>
   );
 }

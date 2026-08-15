@@ -656,6 +656,13 @@ pub fn run() {
             api::open_external_url,
             // Export commands
             export::api_export_markdown,
+            // Version history commands
+            database::version_commands::api_list_transcript_versions,
+            database::version_commands::api_list_summary_versions,
+            database::version_commands::api_render_transcript_version,
+            database::version_commands::api_render_summary_version,
+            database::version_commands::api_restore_transcript_version,
+            database::version_commands::api_restore_summary_version,
             // Custom OpenAI commands
             api::api_save_custom_openai_config,
             api::api_get_custom_openai_config,
