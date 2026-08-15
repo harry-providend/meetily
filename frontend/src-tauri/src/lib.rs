@@ -41,6 +41,7 @@ pub mod audio;
 pub mod config;
 pub mod console_utils;
 pub mod database;
+pub mod export;
 pub mod notifications;
 pub mod ollama;
 pub mod onboarding;
@@ -653,6 +654,8 @@ pub fn run() {
             api::test_backend_connection,
             api::debug_backend_connection,
             api::open_external_url,
+            // Export commands
+            export::api_export_markdown,
             // Custom OpenAI commands
             api::api_save_custom_openai_config,
             api::api_get_custom_openai_config,
