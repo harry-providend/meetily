@@ -3,7 +3,7 @@
 import { useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { ButtonGroup } from '@/components/ui/button-group';
-import { Copy, Download, FolderOpen, History, RefreshCw } from 'lucide-react';
+import { Download, FolderOpen, History, RefreshCw } from 'lucide-react';
 import Analytics from '@/lib/analytics';
 import { RetranscribeDialog } from './RetranscribeDialog';
 import { useConfig } from '@/contexts/ConfigContext';
@@ -11,7 +11,6 @@ import { useConfig } from '@/contexts/ConfigContext';
 
 interface TranscriptButtonGroupProps {
   transcriptCount: number;
-  onCopyTranscript: () => void;
   onExportTranscript: () => void;
   onOpenVersionHistory: () => void;
   onOpenMeetingFolder: () => Promise<void>;
@@ -23,7 +22,6 @@ interface TranscriptButtonGroupProps {
 
 export function TranscriptButtonGroup({
   transcriptCount,
-  onCopyTranscript,
   onExportTranscript,
   onOpenVersionHistory,
   onOpenMeetingFolder,
@@ -48,25 +46,11 @@ export function TranscriptButtonGroup({
           variant="outline"
           size="sm"
           onClick={() => {
-            Analytics.trackButtonClick('copy_transcript', 'meeting_details');
-            onCopyTranscript();
-          }}
-          disabled={transcriptCount === 0}
-          title={transcriptCount === 0 ? 'No transcript available' : 'Copy Transcript'}
-        >
-          <Copy />
-          <span className="hidden lg:inline">Copy</span>
-        </Button>
-
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => {
             Analytics.trackButtonClick('export_transcript', 'meeting_details');
             onExportTranscript();
           }}
           disabled={transcriptCount === 0}
-          title={transcriptCount === 0 ? 'No transcript available' : 'Export Transcript as Markdown'}
+          title={transcriptCount === 0 ? 'No transcript available' : 'Export Transcript as Text'}
         >
           <Download />
           <span className="hidden lg:inline">Export</span>

@@ -91,8 +91,19 @@ export function legacySummaryToMarkdown(summary: Summary): string {
     .join('\n\n');
 }
 
+export type ExportFormat = 'md' | 'txt';
+
+/** Transcripts are timestamped lines rather than prose, so they export as plain text. */
+export function defaultExportFormat(kind: 'transcript' | 'summary'): ExportFormat {
+  return kind === 'transcript' ? 'txt' : 'md';
+}
+
 /** Builds the filename offered in the save dialog. Rust sanitizes it before writing. */
-export function suggestExportFilename(meetingTitle: string, kind: 'transcript' | 'summary'): string {
+export function suggestExportFilename(
+  meetingTitle: string,
+  kind: 'transcript' | 'summary',
+  format: ExportFormat = defaultExportFormat(kind),
+): string {
   const title = meetingTitle.trim() || 'meeting';
-  return `${title}-${kind}.md`;
+  return `${title}-${kind}.${format}`;
 }

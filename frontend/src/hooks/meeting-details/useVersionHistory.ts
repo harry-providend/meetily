@@ -3,7 +3,11 @@ import { invoke as invokeTauri } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
 import Analytics from '@/lib/analytics';
 import type { VersionInfo, VersionKind } from '@/types/version';
-import { suggestExportFilename } from '@/lib/markdown-export';
+import {
+  defaultExportFormat,
+  suggestExportFilename,
+  type ExportFormat,
+} from '@/lib/markdown-export';
 
 const COMMANDS: Record<VersionKind, { list: string; render: string; restore: string }> = {
   transcript: {
@@ -44,19 +48,22 @@ export function useVersionHistory(kind: VersionKind, meetingId: string, meetingT
     return invokeTauri<string>(commands.render, { meetingId, version });
   }, [commands.render, meetingId]);
 
-  const exportVersion = useCallback(async (version: number): Promise<void> => {
+  const exportVersion = useCallback(async (
+    version: number,
+    format: ExportFormat = defaultExportFormat(kind),
+  ): Promise<void> => {
     try {
       const contents = await render(version);
-      const base = suggestExportFilename(meetingTitle, kind).replace(/\.md$/, '');
+      const base = suggestExportFilename(meetingTitle, kind, format).replace(/\.(md|txt)$/, '');
       const savedPath = await invokeTauri<string | null>('api_export_markdown', {
-        suggestedFilename: `${base}-v${version}.md`,
+        suggestedFilename: `${base}-v${version}.${format}`,
         contents,
       });
 
       if (!savedPath) return;
 
       toast.success('Version exported', { description: savedPath });
-      await Analytics.trackFeatureUsed(`export_${kind}_version`);
+      await Analytics.trackFeatureUsed(`export_${kind}_version_${format}`);
     } catch (error) {
       console.error(`Failed to export ${kind} version:`, error);
       toast.error('Failed to export version', {

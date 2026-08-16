@@ -9,6 +9,7 @@ import {
   buildTranscriptMarkdown,
   legacySummaryToMarkdown,
   suggestExportFilename,
+  type ExportFormat,
 } from '@/lib/markdown-export';
 
 interface TranscriptMarkdown {
@@ -115,54 +116,14 @@ export function useCopyOperations({
     return summaryMarkdown;
   }, [aiSummary, blockNoteSummaryRef]);
 
-  // Copy transcript to clipboard
-  const handleCopyTranscript = useCallback(async () => {
-    const resolved = await resolveTranscriptMarkdown();
-    if (!resolved) return;
-
-    await navigator.clipboard.writeText(resolved.markdown);
-    toast.success('Transcript copied to clipboard');
-
-    await Analytics.trackCopy('transcript', {
-      meeting_id: meeting.id,
-      transcript_length: resolved.segmentCount.toString(),
-      word_count: resolved.wordCount.toString()
-    });
-  }, [meeting, resolveTranscriptMarkdown]);
-
-  // Copy summary to clipboard
-  const handleCopySummary = useCallback(async () => {
-    try {
-      const body = await resolveSummaryMarkdown();
-      if (body === null) return;
-
-      await navigator.clipboard.writeText(buildSummaryMarkdown({
-        meetingId: meeting.id,
-        meetingTitle,
-        createdAt: meeting.created_at,
-        body,
-        timestampLabel: 'Copied on',
-      }));
-
-      toast.success('Summary copied to clipboard');
-
-      await Analytics.trackCopy('summary', {
-        meeting_id: meeting.id,
-        has_markdown: (!!aiSummary && 'markdown' in aiSummary).toString()
-      });
-    } catch (error) {
-      console.error('❌ Failed to copy summary:', error);
-      toast.error('Failed to copy summary');
-    }
-  }, [aiSummary, meetingTitle, meeting, resolveSummaryMarkdown]);
-
   // Opens the native save dialog. Resolves to false when the user cancels.
   const exportMarkdown = useCallback(async (
     kind: 'transcript' | 'summary',
     contents: string,
+    format?: ExportFormat,
   ): Promise<boolean> => {
     const savedPath = await invokeTauri<string | null>('api_export_markdown', {
-      suggestedFilename: suggestExportFilename(meetingTitle ?? meeting.title, kind),
+      suggestedFilename: suggestExportFilename(meetingTitle ?? meeting.title, kind, format),
       contents,
     });
 
@@ -189,7 +150,7 @@ export function useCopyOperations({
     }
   }, [resolveTranscriptMarkdown, exportMarkdown]);
 
-  const handleExportSummary = useCallback(async () => {
+  const handleExportSummary = useCallback(async (format: ExportFormat = 'md') => {
     try {
       const body = await resolveSummaryMarkdown();
       if (body === null) return;
@@ -200,7 +161,7 @@ export function useCopyOperations({
         createdAt: meeting.created_at,
         body,
         timestampLabel: 'Exported on',
-      }));
+      }), format);
     } catch (error) {
       console.error('❌ Failed to export summary:', error);
       toast.error('Failed to export summary', {
@@ -210,8 +171,6 @@ export function useCopyOperations({
   }, [meeting, meetingTitle, resolveSummaryMarkdown, exportMarkdown]);
 
   return {
-    handleCopyTranscript,
-    handleCopySummary,
     handleExportTranscript,
     handleExportSummary,
   };

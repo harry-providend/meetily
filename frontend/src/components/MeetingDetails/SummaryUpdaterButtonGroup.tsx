@@ -2,15 +2,21 @@
 
 import { Button } from '@/components/ui/button';
 import { ButtonGroup } from '@/components/ui/button-group';
-import { Copy, Download, History, Save, Loader2, Search, FolderOpen } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Download, History, Save, Loader2, Search, FolderOpen } from 'lucide-react';
 import Analytics from '@/lib/analytics';
+import type { ExportFormat } from '@/lib/markdown-export';
 
 interface SummaryUpdaterButtonGroupProps {
   isSaving: boolean;
   isDirty: boolean;
   onSave: () => Promise<void>;
-  onCopy: () => Promise<void>;
-  onExport: () => Promise<void>;
+  onExport: (format: ExportFormat) => Promise<void>;
   onOpenVersionHistory: () => void;
   onFind?: () => void;
   onOpenFolder: () => Promise<void>;
@@ -21,7 +27,6 @@ export function SummaryUpdaterButtonGroup({
   isSaving,
   isDirty,
   onSave,
-  onCopy,
   onExport,
   onOpenVersionHistory,
   onFind,
@@ -55,37 +60,39 @@ export function SummaryUpdaterButtonGroup({
         )}
       </Button>
 
-      {/* Copy button */}
-      <Button
-        variant="outline"
-        size="sm"
-        title="Copy Summary"
-        onClick={() => {
-          Analytics.trackButtonClick('copy_summary', 'meeting_details');
-          onCopy();
-        }}
-        disabled={!hasSummary}
-        className="cursor-pointer"
-      >
-        <Copy />
-        <span className="hidden lg:inline">Copy</span>
-      </Button>
-
-      {/* Export button */}
-      <Button
-        variant="outline"
-        size="sm"
-        title="Export Summary as Markdown"
-        onClick={() => {
-          Analytics.trackButtonClick('export_summary', 'meeting_details');
-          onExport();
-        }}
-        disabled={!hasSummary}
-        className="cursor-pointer"
-      >
-        <Download />
-        <span className="hidden lg:inline">Export</span>
-      </Button>
+      {/* Export button — one trigger, format chosen from the menu */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="outline"
+            size="sm"
+            title="Export Summary"
+            disabled={!hasSummary}
+            className="cursor-pointer"
+          >
+            <Download />
+            <span className="hidden lg:inline">Export</span>
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem
+            onClick={() => {
+              Analytics.trackButtonClick('export_summary_md', 'meeting_details');
+              onExport('md');
+            }}
+          >
+            Export as .md
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => {
+              Analytics.trackButtonClick('export_summary_txt', 'meeting_details');
+              onExport('txt');
+            }}
+          >
+            Export as .txt
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
 
       {/* History button */}
       <Button

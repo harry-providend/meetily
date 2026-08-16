@@ -9,8 +9,16 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Download, History, Loader2, RotateCcw } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { useVersionHistory } from '@/hooks/meeting-details/useVersionHistory';
 import { describeReason, describeSize, type VersionKind } from '@/types/version';
 
@@ -151,9 +159,16 @@ export function VersionHistoryDialog({
                 <div className="p-4 text-sm text-gray-500 flex items-center gap-2">
                   <Loader2 className="animate-spin" size={14} /> Loading preview...
                 </div>
+              ) : !preview ? (
+                <p className="p-4 text-xs text-gray-500">Select a version to preview it.</p>
+              ) : kind === 'summary' ? (
+                // Summaries are markdown; transcripts stay monospace so timestamps line up.
+                <div className="prose prose-sm max-w-none p-4 break-words">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{preview}</ReactMarkdown>
+                </div>
               ) : (
                 <pre className="p-4 text-xs whitespace-pre-wrap break-words font-mono">
-                  {preview || 'Select a version to preview it.'}
+                  {preview}
                 </pre>
               )}
             </ScrollArea>
@@ -161,15 +176,39 @@ export function VersionHistoryDialog({
         </div>
 
         <div className="flex justify-end gap-2 pt-2 border-t">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={selected === null}
-            onClick={() => selected !== null && exportVersion(selected)}
-          >
-            <Download size={16} />
-            Export .md
-          </Button>
+          {/* Transcripts export as plain text; summaries offer both from one trigger. */}
+          {kind === 'summary' ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" disabled={selected === null}>
+                  <Download size={16} />
+                  Export
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  onClick={() => selected !== null && exportVersion(selected, 'md')}
+                >
+                  Export as .md
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => selected !== null && exportVersion(selected, 'txt')}
+                >
+                  Export as .txt
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={selected === null}
+              onClick={() => selected !== null && exportVersion(selected, 'txt')}
+            >
+              <Download size={16} />
+              Export
+            </Button>
+          )}
           <Button
             variant="outline"
             size="sm"

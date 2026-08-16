@@ -188,7 +188,6 @@ export default function PageContent({
           transcripts={meetingData.transcripts}
           customPrompt={customPrompt}
           onPromptChange={setCustomPrompt}
-          onCopyTranscript={copyOperations.handleCopyTranscript}
           onExportTranscript={copyOperations.handleExportTranscript}
           onOpenVersionHistory={() => setHistoryKind('transcript')}
           onOpenMeetingFolder={meetingOperations.handleOpenMeetingFolder}
@@ -218,7 +217,6 @@ export default function PageContent({
           summaryRef={meetingData.blockNoteSummaryRef}
           isSaving={meetingData.isSaving}
           onSaveAll={meetingData.saveAllChanges}
-          onCopySummary={copyOperations.handleCopySummary}
           onExportSummary={copyOperations.handleExportSummary}
           onOpenVersionHistory={() => setHistoryKind('summary')}
           onOpenFolder={meetingOperations.handleOpenMeetingFolder}
