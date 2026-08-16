@@ -1,4 +1,6 @@
-use crate::summary::templates;
+use crate::database::repositories::template::TemplatesRepository;
+use crate::state::AppState;
+use crate::summary::templates::{self, TemplateSection};
 use serde::{Deserialize, Serialize};
 use tauri::Runtime;
 use tracing::{info, warn};
@@ -14,9 +16,18 @@ pub struct TemplateInfo {
 
     /// Brief description of the template's purpose
     pub description: String,
+
+    /// Ships with the app: editable and resettable, but not deletable.
+    pub is_builtin: bool,
+
+    /// A built-in the user has edited, so reset applies.
+    pub user_modified: bool,
+
+    /// RFC 3339 timestamp of the last edit
+    pub updated_at: String,
 }
 
-/// Detailed template structure for preview/debugging
+/// Full template structure for the editor
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TemplateDetails {
     /// Template identifier
@@ -28,31 +39,47 @@ pub struct TemplateDetails {
     /// Description
     pub description: String,
 
-    /// List of section titles in order
-    pub sections: Vec<String>,
+    /// Full section definitions, including the LLM instruction and format for each
+    pub sections: Vec<TemplateSection>,
+
+    /// True when the template ships with the app
+    pub is_builtin: bool,
+
+    /// True when a built-in has been edited by the user
+    pub user_modified: bool,
 }
 
-/// Lists all available templates
-///
-/// Returns templates from both built-in (embedded) and custom (user data directory) sources.
-/// Templates are automatically discovered - no code changes needed to add new templates.
-///
-/// # Returns
-/// Vector of TemplateInfo with id, name, and description for each template
+/// Payload for creating or updating a template
+#[derive(Debug, Deserialize)]
+pub struct SaveTemplateRequest {
+    /// Omit to create; an id is then derived from the name.
+    pub id: Option<String>,
+    pub name: String,
+    pub description: String,
+    pub sections: Vec<TemplateSection>,
+}
+
+/// Lists all templates, built-ins first.
 #[tauri::command]
 pub async fn api_list_templates<R: Runtime>(
     _app: tauri::AppHandle<R>,
+    state: tauri::State<'_, AppState>,
 ) -> Result<Vec<TemplateInfo>, String> {
-    info!("api_list_templates called");
+    let pool = state.db_manager.pool();
 
-    let templates = templates::list_templates();
+    let rows = TemplatesRepository::list(pool)
+        .await
+        .map_err(|e| format!("Failed to list templates: {}", e))?;
 
-    let template_infos: Vec<TemplateInfo> = templates
+    let template_infos: Vec<TemplateInfo> = rows
         .into_iter()
-        .map(|(id, name, description)| TemplateInfo {
-            id,
-            name,
-            description,
+        .map(|row| TemplateInfo {
+            id: row.id,
+            name: row.name,
+            description: row.description,
+            is_builtin: row.is_builtin != 0,
+            user_modified: row.user_modified != 0,
+            updated_at: row.updated_at,
         })
         .collect();
 
@@ -61,56 +88,153 @@ pub async fn api_list_templates<R: Runtime>(
     Ok(template_infos)
 }
 
-/// Gets detailed information about a specific template
-///
-/// # Arguments
-/// * `template_id` - Template identifier (e.g., "daily_standup")
-///
-/// # Returns
-/// TemplateDetails with full template structure
+/// Gets the full definition backing the editor, sections included.
 #[tauri::command]
 pub async fn api_get_template_details<R: Runtime>(
     _app: tauri::AppHandle<R>,
+    state: tauri::State<'_, AppState>,
     template_id: String,
 ) -> Result<TemplateDetails, String> {
     info!("api_get_template_details called for template_id: {}", template_id);
 
-    let template = templates::get_template(&template_id)?;
+    let pool = state.db_manager.pool();
+    let template = templates::get_template(pool, &template_id).await?;
 
-    let section_titles: Vec<String> = template
-        .sections
-        .iter()
-        .map(|section| section.title.clone())
-        .collect();
+    // A template answered by the embedded fallback is an unmodified built-in
+    let (is_builtin, user_modified) = match TemplatesRepository::get(pool, &template_id).await {
+        Ok(Some(row)) => (row.is_builtin != 0, row.user_modified != 0),
+        Ok(None) => (true, false),
+        Err(e) => {
+            warn!("Failed to read template flags for '{}': {}", template_id, e);
+            (false, false)
+        }
+    };
 
-    let details = TemplateDetails {
+    Ok(TemplateDetails {
         id: template_id,
         name: template.name,
         description: template.description,
-        sections: section_titles,
-    };
-
-    info!("Retrieved template details for '{}'", details.name);
-
-    Ok(details)
+        sections: template.sections,
+        is_builtin,
+        user_modified,
+    })
 }
 
-/// Validates a custom template JSON string
-///
-/// Useful for template editor UI or validation before saving custom templates
-///
-/// # Arguments
-/// * `template_json` - Raw JSON string of the template
-///
-/// # Returns
-/// Ok(template_name) if valid, Err(error_message) if invalid
+/// Creates or updates a template, returning the saved id.
+#[tauri::command]
+pub async fn api_save_template<R: Runtime>(
+    _app: tauri::AppHandle<R>,
+    state: tauri::State<'_, AppState>,
+    request: SaveTemplateRequest,
+) -> Result<String, String> {
+    let pool = state.db_manager.pool();
+
+    let template = templates::Template {
+        name: request.name.trim().to_string(),
+        description: request.description.trim().to_string(),
+        sections: request.sections,
+    };
+    template.validate()?;
+
+    let id = match request.id {
+        Some(existing) => {
+            let id = templates::sanitize_template_id(&existing)?;
+            if !TemplatesRepository::exists(pool, &id)
+                .await
+                .map_err(|e| format!("Database error: {}", e))?
+            {
+                return Err(format!("Template '{}' not found", id));
+            }
+            id
+        }
+        None => templates::derive_unique_id(pool, &template.name).await?,
+    };
+
+    let sections_json = serde_json::to_string(&template.sections)
+        .map_err(|e| format!("Failed to serialize sections: {}", e))?;
+
+    TemplatesRepository::upsert_user_template(
+        pool,
+        &id,
+        &template.name,
+        &template.description,
+        &sections_json,
+    )
+    .await
+    .map_err(|e| format!("Failed to save template: {}", e))?;
+
+    info!("Saved template '{}' ({})", template.name, id);
+
+    Ok(id)
+}
+
+/// Deletes a user-authored template; built-ins must be reset instead.
+#[tauri::command]
+pub async fn api_delete_template<R: Runtime>(
+    _app: tauri::AppHandle<R>,
+    state: tauri::State<'_, AppState>,
+    template_id: String,
+) -> Result<(), String> {
+    let pool = state.db_manager.pool();
+    let id = templates::sanitize_template_id(&template_id)?;
+
+    let row = TemplatesRepository::get(pool, &id)
+        .await
+        .map_err(|e| format!("Database error: {}", e))?
+        .ok_or_else(|| format!("Template '{}' not found", id))?;
+
+    if row.is_builtin != 0 {
+        return Err(
+            "Built-in templates cannot be deleted. Use \"Reset to default\" instead.".to_string(),
+        );
+    }
+
+    TemplatesRepository::delete(pool, &id)
+        .await
+        .map_err(|e| format!("Failed to delete template: {}", e))?;
+
+    info!("Deleted template '{}'", id);
+
+    Ok(())
+}
+
+/// Restores a built-in template to the content shipped with the app.
+#[tauri::command]
+pub async fn api_reset_template<R: Runtime>(
+    _app: tauri::AppHandle<R>,
+    state: tauri::State<'_, AppState>,
+    template_id: String,
+) -> Result<(), String> {
+    let pool = state.db_manager.pool();
+    let id = templates::sanitize_template_id(&template_id)?;
+
+    let row = TemplatesRepository::get(pool, &id)
+        .await
+        .map_err(|e| format!("Database error: {}", e))?
+        .ok_or_else(|| format!("Template '{}' not found", id))?;
+
+    if row.is_builtin == 0 {
+        return Err("Only built-in templates can be reset to default".to_string());
+    }
+
+    // Clearing the flag makes the row eligible for seeding again
+    TemplatesRepository::clear_user_modified(pool, &id)
+        .await
+        .map_err(|e| format!("Failed to reset template: {}", e))?;
+
+    templates::seed_shipped_templates(pool).await?;
+
+    info!("Reset template '{}' to its shipped definition", id);
+
+    Ok(())
+}
+
+/// Validates raw template JSON, returning the template name.
 #[tauri::command]
 pub async fn api_validate_template<R: Runtime>(
     _app: tauri::AppHandle<R>,
     template_json: String,
 ) -> Result<String, String> {
-    info!("api_validate_template called");
-
     match templates::validate_and_parse_template(&template_json) {
         Ok(template) => {
             info!("Template '{}' validated successfully", template.name);
@@ -125,19 +249,10 @@ pub async fn api_validate_template<R: Runtime>(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::summary::templates;
 
-    #[tokio::test]
-    async fn test_list_templates() {
-        // This test requires the templates to be embedded/available
-        // In a real test environment, you might want to mock the templates module
-
-        // For now, just verify the function compiles and runs
-        // You can expand this with more specific assertions
-    }
-
-    #[tokio::test]
-    async fn test_validate_template_valid() {
+    #[test]
+    fn test_validate_template_valid() {
         let valid_json = r#"
         {
             "name": "Test Template",
@@ -151,17 +266,13 @@ mod tests {
             ]
         }"#;
 
-        // Mock app handle would be needed for actual testing
-        // For now, test the validation logic directly
         let result = templates::validate_and_parse_template(valid_json);
         assert!(result.is_ok());
     }
 
-    #[tokio::test]
-    async fn test_validate_template_invalid() {
-        let invalid_json = "invalid json";
-
-        let result = templates::validate_and_parse_template(invalid_json);
+    #[test]
+    fn test_validate_template_invalid() {
+        let result = templates::validate_and_parse_template("invalid json");
         assert!(result.is_err());
     }
 }

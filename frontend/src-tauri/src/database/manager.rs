@@ -34,6 +34,12 @@ impl DatabaseManager {
 
         sqlx::migrate!("./migrations").run(&pool).await?;
 
+        // Seeded here because every startup path builds a DatabaseManager.
+        // Non-fatal: the templates module falls back to its embedded copies.
+        if let Err(e) = crate::summary::templates::seed_templates(&pool).await {
+            log::warn!("Failed to seed summary templates: {}", e);
+        }
+
         Ok(DatabaseManager { pool })
     }
 

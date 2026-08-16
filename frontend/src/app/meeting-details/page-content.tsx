@@ -8,6 +8,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
 import { TranscriptPanel } from '@/components/MeetingDetails/TranscriptPanel';
 import { SummaryPanel } from '@/components/MeetingDetails/SummaryPanel';
+import { TemplateManagerDialog } from '@/components/MeetingDetails/TemplateManagerDialog';
 import { ModelConfig } from '@/components/ModelSettingsModal';
 
 // Custom hooks
@@ -57,6 +58,8 @@ export default function PageContent({
   const [customPrompt, setCustomPrompt] = useState<string>('');
   const [isRecording] = useState(false);
   const [summaryResponse] = useState<SummaryResponse | null>(null);
+  const [isTemplateManagerOpen, setIsTemplateManagerOpen] = useState(false);
+  const [templateManagerInitialId, setTemplateManagerInitialId] = useState<string | undefined>();
 
   // Ref to store the modal open function from SummaryGeneratorButtonGroup
   const openModelSettingsRef = useRef<(() => void) | null>(null);
@@ -133,6 +136,11 @@ export default function PageContent({
   const meetingOperations = useMeetingOperations({
     meeting,
   });
+
+  const handleOpenTemplateManager = (templateId?: string) => {
+    setTemplateManagerInitialId(templateId);
+    setIsTemplateManagerOpen(true);
+  };
 
   // Track page view
   useEffect(() => {
@@ -224,10 +232,22 @@ export default function PageContent({
           availableTemplates={templates.availableTemplates}
           selectedTemplate={templates.selectedTemplate}
           onTemplateSelect={templates.handleTemplateSelection}
+          onManageTemplates={handleOpenTemplateManager}
           isModelConfigLoading={false}
           onOpenModelSettings={handleRegisterModalOpen}
         />
       </div>
+
+      <TemplateManagerDialog
+        open={isTemplateManagerOpen}
+        onOpenChange={setIsTemplateManagerOpen}
+        templates={templates.availableTemplates}
+        getTemplateDetails={templates.getTemplateDetails}
+        saveTemplate={templates.saveTemplate}
+        deleteTemplate={templates.deleteTemplate}
+        resetTemplate={templates.resetTemplate}
+        initialTemplateId={templateManagerInitialId}
+      />
     </motion.div>
   );
 }
