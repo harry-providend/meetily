@@ -9,7 +9,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Download, History, Save, Loader2, Search, FolderOpen } from 'lucide-react';
-import Analytics from '@/lib/analytics';
 import type { ExportFormat } from '@/lib/markdown-export';
 
 interface SummaryUpdaterButtonGroupProps {
@@ -42,7 +41,6 @@ export function SummaryUpdaterButtonGroup({
         className={`${isDirty ? 'bg-green-200' : ""}`}
         title={isSaving ? "Saving" : "Save Changes"}
         onClick={() => {
-          Analytics.trackButtonClick('save_changes', 'meeting_details');
           onSave();
         }}
         disabled={isSaving}
@@ -77,7 +75,6 @@ export function SummaryUpdaterButtonGroup({
         <DropdownMenuContent align="end">
           <DropdownMenuItem
             onClick={() => {
-              Analytics.trackButtonClick('export_summary_md', 'meeting_details');
               onExport('md');
             }}
           >
@@ -85,7 +82,6 @@ export function SummaryUpdaterButtonGroup({
           </DropdownMenuItem>
           <DropdownMenuItem
             onClick={() => {
-              Analytics.trackButtonClick('export_summary_txt', 'meeting_details');
               onExport('txt');
             }}
           >
@@ -100,7 +96,6 @@ export function SummaryUpdaterButtonGroup({
         size="sm"
         title="Summary version history"
         onClick={() => {
-          Analytics.trackButtonClick('summary_history', 'meeting_details');
           onOpenVersionHistory();
         }}
         className="cursor-pointer"
@@ -116,7 +111,6 @@ export function SummaryUpdaterButtonGroup({
           size="sm"
           title="Find in Summary"
           onClick={() => {
-            Analytics.trackButtonClick('find_in_summary', 'meeting_details');
             onFind();
           }}
           disabled={!hasSummary}

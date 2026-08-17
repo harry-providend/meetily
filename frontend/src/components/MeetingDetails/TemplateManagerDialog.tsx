@@ -311,7 +311,7 @@ export function TemplateManagerDialog({
               <div className="space-y-4">
                 {draft.is_builtin && (
                   <p className="text-xs text-gray-500 bg-gray-50 rounded px-3 py-2">
-                    This template ships with Meetily. Your edits are kept across app updates, and
+                    This template ships with the app. Your edits are kept across app updates, and
                     you can restore the original at any time.
                   </p>
                 )}

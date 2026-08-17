@@ -2,7 +2,6 @@ import { useCallback, RefObject } from 'react';
 import { Transcript, Summary } from '@/types';
 import { BlockNoteSummaryViewRef } from '@/components/AISummary/BlockNoteSummaryView';
 import { toast } from 'sonner';
-import Analytics from '@/lib/analytics';
 import { invoke as invokeTauri } from '@tauri-apps/api/core';
 import {
   buildSummaryMarkdown,
@@ -132,7 +131,6 @@ export function useCopyOperations({
     toast.success(`${kind === 'transcript' ? 'Transcript' : 'Summary'} exported`, {
       description: savedPath,
     });
-    await Analytics.trackFeatureUsed(`export_${kind}_markdown`);
     return true;
   }, [meeting, meetingTitle]);
 

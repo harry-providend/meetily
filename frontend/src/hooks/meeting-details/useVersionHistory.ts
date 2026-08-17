@@ -1,7 +1,6 @@
 import { useCallback, useState } from 'react';
 import { invoke as invokeTauri } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
-import Analytics from '@/lib/analytics';
 import type { VersionInfo, VersionKind } from '@/types/version';
 import {
   defaultExportFormat,
@@ -63,7 +62,6 @@ export function useVersionHistory(kind: VersionKind, meetingId: string, meetingT
       if (!savedPath) return;
 
       toast.success('Version exported', { description: savedPath });
-      await Analytics.trackFeatureUsed(`export_${kind}_version_${format}`);
     } catch (error) {
       console.error(`Failed to export ${kind} version:`, error);
       toast.error('Failed to export version', {
@@ -77,7 +75,6 @@ export function useVersionHistory(kind: VersionKind, meetingId: string, meetingT
       await invokeTauri(commands.restore, { meetingId, version });
       await refresh();
       toast.success(`Restored ${kind} version ${version}`);
-      await Analytics.trackFeatureUsed(`restore_${kind}_version`);
       return true;
     } catch (error) {
       console.error(`Failed to restore ${kind} version:`, error);

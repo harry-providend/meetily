@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { invoke as invokeTauri } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
-import Analytics from '@/lib/analytics';
 import type {
   SaveTemplateRequest,
   TemplateDetails,
@@ -46,7 +45,6 @@ export function useTemplates() {
     toast.success('Template selected', {
       description: `Using "${templateName}" template for summary generation`,
     });
-    Analytics.trackFeatureUsed('template_selected');
   }, []);
 
   /** Loads the full definition of a template for editing. */
@@ -58,21 +56,18 @@ export function useTemplates() {
   const saveTemplate = useCallback(async (request: SaveTemplateRequest): Promise<string> => {
     const savedId = await invokeTauri<string>('api_save_template', { request });
     await refreshTemplates();
-    Analytics.trackFeatureUsed(request.id ? 'template_updated' : 'template_created');
     return savedId;
   }, [refreshTemplates]);
 
   const deleteTemplate = useCallback(async (templateId: string): Promise<void> => {
     await invokeTauri('api_delete_template', { templateId });
     await refreshTemplates();
-    Analytics.trackFeatureUsed('template_deleted');
   }, [refreshTemplates]);
 
   /** Restores a built-in template to the definition shipped with the app. */
   const resetTemplate = useCallback(async (templateId: string): Promise<void> => {
     await invokeTauri('api_reset_template', { templateId });
     await refreshTemplates();
-    Analytics.trackFeatureUsed('template_reset');
   }, [refreshTemplates]);
 
   return {

@@ -14,7 +14,6 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { recordingService } from '@/services/recordingService';
-import Analytics from '@/lib/analytics';
 
 interface AudioDevice {
   name: string;
@@ -69,7 +68,6 @@ export function LiveMicSwitcher({ currentMicName, onSwitched }: LiveMicSwitcherP
       toast.success(`Switched to ${deviceName}`, {
         description: 'A moment of audio may be missing while the microphone changes.',
       });
-      await Analytics.trackFeatureUsed('switch_microphone_live');
     } catch (error) {
       console.error('Failed to switch microphone:', error);
       toast.error('Could not switch microphone', {
