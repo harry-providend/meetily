@@ -3,7 +3,7 @@
 import { useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { ButtonGroup } from '@/components/ui/button-group';
-import { Copy, FolderOpen, RefreshCw } from 'lucide-react';
+import { Download, FolderOpen, History, RefreshCw } from 'lucide-react';
 import Analytics from '@/lib/analytics';
 import { RetranscribeDialog } from './RetranscribeDialog';
 import { useConfig } from '@/contexts/ConfigContext';
@@ -11,7 +11,8 @@ import { useConfig } from '@/contexts/ConfigContext';
 
 interface TranscriptButtonGroupProps {
   transcriptCount: number;
-  onCopyTranscript: () => void;
+  onExportTranscript: () => void;
+  onOpenVersionHistory: () => void;
   onOpenMeetingFolder: () => Promise<void>;
   meetingId?: string;
   meetingFolderPath?: string | null;
@@ -21,7 +22,8 @@ interface TranscriptButtonGroupProps {
 
 export function TranscriptButtonGroup({
   transcriptCount,
-  onCopyTranscript,
+  onExportTranscript,
+  onOpenVersionHistory,
   onOpenMeetingFolder,
   meetingId,
   meetingFolderPath,
@@ -44,14 +46,27 @@ export function TranscriptButtonGroup({
           variant="outline"
           size="sm"
           onClick={() => {
-            Analytics.trackButtonClick('copy_transcript', 'meeting_details');
-            onCopyTranscript();
+            Analytics.trackButtonClick('export_transcript', 'meeting_details');
+            onExportTranscript();
           }}
           disabled={transcriptCount === 0}
-          title={transcriptCount === 0 ? 'No transcript available' : 'Copy Transcript'}
+          title={transcriptCount === 0 ? 'No transcript available' : 'Export Transcript as Text'}
         >
-          <Copy />
-          <span className="hidden lg:inline">Copy</span>
+          <Download />
+          <span className="hidden lg:inline">Export</span>
+        </Button>
+
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            Analytics.trackButtonClick('transcript_history', 'meeting_details');
+            onOpenVersionHistory();
+          }}
+          title="Transcript version history"
+        >
+          <History />
+          <span className="hidden lg:inline">History</span>
         </Button>
 
         <Button

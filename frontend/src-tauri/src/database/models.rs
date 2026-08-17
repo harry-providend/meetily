@@ -67,6 +67,41 @@ pub struct TranscriptChunk {
 }
 
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
+pub struct TranscriptVersionRow {
+    pub id: String,
+    pub meeting_id: String,
+    pub version: i64,
+    /// What caused the snapshot: 'retranscription' or 'restore'
+    pub reason: String,
+    /// Serialized Vec<ArchivedSegment>
+    pub segments_json: String,
+    pub segment_count: i64,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
+pub struct SummaryVersionRow {
+    pub id: String,
+    pub meeting_id: String,
+    pub version: i64,
+    /// What caused the snapshot: 'regeneration' or 'restore'
+    pub reason: String,
+    pub result_json: String,
+    pub created_at: String,
+}
+
+/// A transcript segment as stored inside `transcript_versions.segments_json`.
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
+pub struct ArchivedSegment {
+    pub id: String,
+    pub transcript: String,
+    pub timestamp: String,
+    pub audio_start_time: Option<f64>,
+    pub audio_end_time: Option<f64>,
+    pub duration: Option<f64>,
+}
+
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
 pub struct Setting {
     pub id: String,
     pub provider: String,

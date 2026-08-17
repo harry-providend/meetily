@@ -16,6 +16,7 @@ import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover
 import { LanguagePickerPopover } from '@/components/LanguagePickerPopover';
 import { useRecentLanguages } from '@/hooks/useRecentLanguages';
 import { labelForCode } from '@/lib/summary-languages';
+import type { ExportFormat } from '@/lib/markdown-export';
 import {
   readMeetingSummaryLanguage,
   saveMeetingSummaryLanguage,
@@ -37,7 +38,8 @@ interface SummaryPanelProps {
   summaryRef: RefObject<BlockNoteSummaryViewRef>;
   isSaving: boolean;
   onSaveAll: () => Promise<void>;
-  onCopySummary: () => Promise<void>;
+  onExportSummary: (format: ExportFormat) => Promise<void>;
+  onOpenVersionHistory: () => void;
   onOpenFolder: () => Promise<void>;
   aiSummary: Summary | null;
   summaryStatus: 'idle' | 'processing' | 'summarizing' | 'regenerating' | 'completed' | 'error';
@@ -74,7 +76,8 @@ export function SummaryPanel({
   summaryRef,
   isSaving,
   onSaveAll,
-  onCopySummary,
+  onExportSummary,
+  onOpenVersionHistory,
   onOpenFolder,
   aiSummary,
   summaryStatus,
@@ -297,7 +300,8 @@ export function SummaryPanel({
                 isSaving={isSaving}
                 isDirty={isTitleDirty || (summaryRef.current?.isDirty || false)}
                 onSave={onSaveAll}
-                onCopy={onCopySummary}
+                onExport={onExportSummary}
+                onOpenVersionHistory={onOpenVersionHistory}
                 onFind={() => {
                   // TODO: Implement find in summary functionality
                   console.log('Find in summary clicked');
