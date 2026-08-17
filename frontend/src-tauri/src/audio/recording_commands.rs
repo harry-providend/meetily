@@ -1216,3 +1216,53 @@ pub async fn attempt_device_reconnect(
         }
     }
 }
+
+/// Switch the microphone while a recording is in progress.
+///
+/// `device_name` is the bare device name as reported by `get_audio_devices`.
+/// System audio is left untouched.
+#[tauri::command]
+pub async fn switch_microphone_device<R: Runtime>(
+    app: AppHandle<R>,
+    device_name: String,
+) -> Result<(), String> {
+    info!("Switching microphone to: {}", device_name);
+
+    if !IS_RECORDING.load(Ordering::SeqCst) {
+        return Err("No recording is currently active".to_string());
+    }
+
+    // RECORDING_MANAGER is a std Mutex, so the guard cannot be held across an await
+    // without stalling every other recording command for the length of the swap.
+    let result = tokio::task::spawn_blocking(move || {
+        tokio::runtime::Handle::current().block_on(async {
+            let mut manager_guard = RECORDING_MANAGER.lock().unwrap();
+            if let Some(manager) = manager_guard.as_mut() {
+                manager.switch_microphone_device(&device_name).await
+            } else {
+                Err(anyhow::anyhow!("Recording not active"))
+            }
+        })
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?;
+
+    match result {
+        Ok(()) => {
+            app.emit(
+                "microphone-switched",
+                serde_json::json!({
+                    "message": "Microphone switched"
+                }),
+            )
+            .map_err(|e| e.to_string())?;
+
+            info!("✅ Microphone switched successfully");
+            Ok(())
+        }
+        Err(e) => {
+            error!("Microphone switch failed: {}", e);
+            Err(e.to_string())
+        }
+    }
+}

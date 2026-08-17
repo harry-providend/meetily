@@ -3,7 +3,7 @@ use tokio::sync::mpsc;
 use anyhow::Result;
 use log::{debug, error, info, warn};
 
-use super::devices::{AudioDevice, list_audio_devices};
+use super::devices::{AudioDevice, DeviceType, list_audio_devices};
 
 #[cfg(target_os = "macos")]
 use super::devices::get_safe_recording_devices_macos;
@@ -491,6 +491,67 @@ impl RecordingManager {
         } else {
             None
         }
+    }
+
+    /// Switch to a different microphone without interrupting the recording.
+    ///
+    /// Unlike `attempt_device_reconnect`, this replaces only the microphone stream, so
+    /// system audio keeps flowing throughout. While the mic is down the mixer zero-pads
+    /// that side, so the gap becomes silence rather than lost time — provided a system
+    /// stream is running to keep the mix advancing.
+    pub async fn switch_microphone_device(&mut self, device_name: &str) -> Result<()> {
+        info!("🎤 Switching microphone to: {}", device_name);
+
+        // Reopening the device that is already capturing risks blocking on a handle the
+        // OS has not released, and there is nothing to change anyway.
+        if let Some(current) = self.state.get_microphone_device() {
+            if current.name == device_name {
+                info!("Microphone '{}' is already active, nothing to do", device_name);
+                return Ok(());
+            }
+        }
+
+        // Resolve against the live device list so a stale UI selection fails loudly here
+        // rather than producing a broken stream.
+        let available_devices = list_audio_devices().await?;
+        let device = available_devices
+            .iter()
+            .find(|d| d.name == device_name && d.device_type == DeviceType::Input)
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("Microphone '{}' is not available", device_name))?;
+
+        let device_arc = Arc::new(device);
+
+        // Bound the swap: opening an audio device can block, and this runs while holding
+        // the recording-manager lock, so a stuck device would otherwise freeze the app.
+        tokio::time::timeout(
+            tokio::time::Duration::from_secs(10),
+            self.stream_manager.swap_microphone(device_arc.clone()),
+        )
+        .await
+        .map_err(|_| {
+            anyhow::anyhow!("Timed out opening microphone '{}'", device_arc.name)
+        })??;
+
+        // set_device_info overwrites both fields, so the current system name has to be
+        // passed back in or it would be wiped from metadata.json.
+        let system_name = self.state.get_system_device().map(|d| d.name.clone());
+        self.recording_saver
+            .set_device_info(Some(device_arc.name.clone()), system_name);
+
+        // The monitor owns its device list inside the spawned task and start_monitoring
+        // no-ops while one is running, so re-targeting means a full stop and restart.
+        if let Some(ref mut monitor) = self.device_monitor {
+            monitor.stop_monitoring().await;
+            let system_device = self.state.get_system_device();
+            if let Err(e) = monitor.start_monitoring(Some(device_arc.clone()), system_device) {
+                warn!("Failed to re-arm device monitoring after switch: {}", e);
+                // Non-fatal - the recording continues, just without disconnect detection
+            }
+        }
+
+        info!("✅ Microphone switched to: {}", device_arc.name);
+        Ok(())
     }
 
     /// Attempt to reconnect a disconnected device

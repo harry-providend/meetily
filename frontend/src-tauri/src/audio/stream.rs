@@ -371,6 +371,52 @@ impl AudioStreamManager {
         }
     }
 
+    /// Replace the microphone stream mid-recording, leaving system audio running.
+    ///
+    /// Deliberately does not go through `stop_streams`/`start_streams`: those tear down
+    /// the system stream too, and re-acquiring the macOS system tap mid-meeting can fail
+    /// silently, losing system audio for the rest of the recording.
+    ///
+    /// On failure the manager is left with no microphone stream and the caller decides
+    /// what to do — the recording itself keeps running on whatever else is active.
+    pub async fn swap_microphone(&mut self, new_device: Arc<AudioDevice>) -> Result<()> {
+        info!("🎤 Swapping microphone stream to: {}", new_device.name);
+
+        if let Some(old_stream) = self.microphone_stream.take() {
+            if let Err(e) = old_stream.stop() {
+                // Keep going: the old device may already be gone, which is a common
+                // reason for switching in the first place.
+                warn!("Failed to stop previous microphone stream: {}", e);
+            }
+
+            // Let CoreAudio release the device before reopening. Without this, building
+            // the replacement stream can block indefinitely on a device still held open.
+            tokio::time::sleep(tokio::time::Duration::from_millis(150)).await;
+        }
+
+        // `recording_sender` is None here to match the live start path: streams feed the
+        // pipeline, and the pipeline is what forwards mixed audio to the recording saver.
+        match AudioStream::create(
+            new_device.clone(),
+            self.state.clone(),
+            DeviceType::Microphone,
+            None,
+        )
+        .await
+        {
+            Ok(stream) => {
+                self.state.set_microphone_device(new_device);
+                self.microphone_stream = Some(stream);
+                info!("✅ Microphone stream swapped successfully");
+                Ok(())
+            }
+            Err(e) => {
+                error!("❌ Failed to create replacement microphone stream: {}", e);
+                Err(e)
+            }
+        }
+    }
+
     /// Start audio streams for the given devices
     pub async fn start_streams(
         &mut self,
