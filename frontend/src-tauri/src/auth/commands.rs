@@ -1,13 +1,8 @@
 //! Tauri commands for sign-in.
 //!
-//! Offline behaviour is the important design point here. The app records and
-//! transcribes locally and must keep working without a network, so a *stored*
-//! session counts as signed in even when its access token has expired. Refresh
-//! is attempted opportunistically and its failure is not fatal. Only the absence
-//! of any stored session sends the user to the sign-in screen.
-//!
-//! Sign-in state is therefore a gate on app entry, not access control -- local
-//! data remains on disk regardless. Real enforcement arrives with the backend.
+//! A *stored* session counts as signed in even with an expired access token, so
+//! the app keeps working offline; refresh is opportunistic and its failure is not
+//! fatal. This gates app entry, not data access -- local data stays on disk.
 
 use tauri::command;
 use tracing::{info, warn};
@@ -30,8 +25,7 @@ pub async fn auth_get_session() -> Result<SessionInfo, String> {
         return Ok(current.info(configured));
     }
 
-    // Token is due for renewal. Try, but stay signed in if we cannot reach
-    // Entra -- the user may simply be offline mid-meeting.
+    // Stay signed in if Entra is unreachable -- the user may be offline mid-meeting.
     match entra::refresh(&current).await {
         Ok(refreshed) => {
             if let Err(e) = session::store(&refreshed) {
@@ -74,10 +68,7 @@ pub async fn auth_sign_in() -> Result<SessionInfo, String> {
     Ok(session.info(true))
 }
 
-/// Clears the stored session.
-///
-/// Local meetings, transcripts, and recordings are untouched -- this signs out,
-/// it does not wipe the device.
+/// Clears the stored session. Local meetings and recordings are untouched.
 #[command]
 pub async fn auth_sign_out() -> Result<SessionInfo, String> {
     session::clear().map_err(|e| e.to_string())?;
@@ -85,10 +76,10 @@ pub async fn auth_sign_out() -> Result<SessionInfo, String> {
     Ok(SessionInfo::signed_out(AuthConfig::is_configured()))
 }
 
-/// Returns a usable access token, refreshing first if needed.
+/// Returns a usable access token, refreshing if needed.
 ///
-/// Intentionally *not* a Tauri command: tokens must not cross into the webview.
-/// This is the seam the backend client will call once Phase 2 lands.
+/// Deliberately not a Tauri command -- tokens must not reach the webview. This is
+/// the seam the Phase 2 backend client will use.
 #[allow(dead_code)]
 pub async fn access_token() -> anyhow::Result<String> {
     use anyhow::Context;

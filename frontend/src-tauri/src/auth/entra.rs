@@ -1,10 +1,7 @@
-//! The Entra ID authorization-code + PKCE flow.
+//! Entra authorization-code + PKCE flow.
 //!
-//! The browser used is the *system* browser, not an embedded webview. That is
-//! deliberate: the user sees the genuine Microsoft origin in the address bar,
-//! and tenant MFA / Conditional Access / device-compliance policies apply. An
-//! embedded webview also trains users to type credentials into app chrome,
-//! which is exactly the habit phishing relies on.
+//! Uses the *system* browser, not an embedded webview: the user sees the genuine
+//! Microsoft origin and tenant MFA / Conditional Access apply.
 
 use anyhow::{bail, Context, Result};
 use chrono::{Duration, Utc};
@@ -37,10 +34,8 @@ struct TokenErrorResponse {
     error_description: Option<String>,
 }
 
-/// Runs the full interactive sign-in and returns a session.
-///
-/// Blocking work (waiting on the loopback socket) is moved to a blocking task so
-/// the async runtime is not stalled while the user is in the browser.
+/// Runs the interactive sign-in. The loopback wait goes to a blocking task so the
+/// runtime is not stalled while the user is in the browser.
 pub async fn interactive_login() -> Result<AuthSession> {
     let config = AuthConfig::resolve()?;
 
@@ -82,10 +77,6 @@ pub async fn interactive_login() -> Result<AuthSession> {
 }
 
 /// Exchanges a refresh token for a new access token.
-///
-/// Entra may or may not return a new refresh token; when it does not, the
-/// existing one stays valid and must be carried forward, otherwise the next
-/// refresh would fail and force an interactive sign-in.
 pub async fn refresh(session: &AuthSession) -> Result<AuthSession> {
     let config = AuthConfig::resolve()?;
     let refresh_token = session
@@ -193,8 +184,7 @@ async fn post_token_request(
         .context("failed to read the Entra token response")?;
 
     if !status.is_success() {
-        // Entra's error_description carries the actionable detail (AADSTS codes),
-        // so surface it rather than just the status.
+        // error_description carries the AADSTS code, which is the actionable part.
         let parsed: Option<TokenErrorResponse> = serde_json::from_str(&body).ok();
         let detail = parsed
             .and_then(|e| e.error_description.or(e.error))
@@ -212,8 +202,6 @@ fn session_from_tokens(tokens: TokenResponse) -> Result<AuthSession> {
         .context("token response contained no ID token; is the 'openid' scope granted?")?;
 
     let account = account_from_id_token(id_token)?;
-    // Default conservatively when expires_in is absent so we refresh sooner
-    // rather than assuming a long-lived token.
     let lifetime = tokens.expires_in.unwrap_or(3600).max(0);
 
     Ok(AuthSession {

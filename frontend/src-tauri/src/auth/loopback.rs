@@ -1,10 +1,8 @@
-//! Minimal single-shot HTTP listener on 127.0.0.1 that catches the Entra
-//! redirect and extracts the authorization code.
+//! Single-shot loopback listener that catches the Entra redirect.
 //!
-//! Deliberately hand-rolled rather than pulling in an HTTP server: it needs to
-//! serve exactly one meaningful request and then stop. Entra treats
-//! `http://localhost` redirect URIs specially and ignores the port when
-//! matching, so binding port 0 avoids fighting over a fixed port.
+//! Hand-rolled rather than pulling in an HTTP server -- it serves one request and
+//! stops. Entra ignores the port for `http://localhost`, so port 0 avoids
+//! contending over a fixed one.
 
 use anyhow::{anyhow, bail, Context, Result};
 use std::io::{Read, Write};
@@ -16,12 +14,10 @@ use url::Url;
 /// How long to wait for the user to finish signing in before giving up.
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(300);
 
-/// Per-connection read timeout. Short: the browser sends its request headers
-/// immediately, so a slow connection here is a stray probe, not our callback.
+/// Short: the browser sends headers immediately, so a slow connection is a probe.
 const READ_TIMEOUT: Duration = Duration::from_secs(5);
 
-/// Cap on request bytes read, so a misbehaving client cannot make us allocate
-/// without bound. Real callbacks are well under 2 KiB.
+/// Bounds allocation from a misbehaving client. Real callbacks are under 2 KiB.
 const MAX_REQUEST_BYTES: usize = 16 * 1024;
 
 pub struct LoopbackServer {
@@ -59,11 +55,8 @@ impl LoopbackServer {
         format!("http://localhost:{}", self.port)
     }
 
-    /// Blocks until the redirect arrives, then returns its outcome.
-    ///
-    /// Browsers open speculative connections and request things like
-    /// `/favicon.ico`, so anything without an `code`/`error` parameter is
-    /// answered and ignored rather than treated as the callback.
+    /// Blocks until the redirect arrives. Requests without `code`/`error` (favicon,
+    /// speculative connections) are answered and ignored.
     pub fn wait_for_callback(self, expected_state: &str) -> Result<Callback> {
         self.wait_for_callback_with_timeout(expected_state, DEFAULT_TIMEOUT)
     }
@@ -172,10 +165,8 @@ fn request_target(request_line: &str) -> Option<String> {
     Some(target.to_string())
 }
 
-/// Interprets a request target as the OAuth callback.
-///
-/// `Ok(None)` means "not the callback, keep listening". An `Err` means the
-/// callback arrived but could not be trusted, which must abort the sign-in.
+/// `Ok(None)` = not the callback, keep listening. `Err` = arrived but untrusted,
+/// which must abort the sign-in.
 fn parse_callback(target: &str, expected_state: &str) -> Result<Option<Callback>> {
     // A relative target needs a base to parse against; the base is discarded.
     let url = Url::parse("http://localhost")
@@ -201,8 +192,8 @@ fn parse_callback(target: &str, expected_state: &str) -> Result<Option<Callback>
         return Ok(None);
     }
 
-    // State must match whether the outcome was success or failure -- otherwise
-    // we would be reporting on somebody else's sign-in attempt.
+    // Must match on success and failure alike, or we report on someone else's
+    // sign-in attempt.
     match state.as_deref() {
         Some(s) if s == expected_state => {}
         Some(_) => bail!("sign-in state did not match; ignoring this redirect"),

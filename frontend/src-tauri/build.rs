@@ -1,7 +1,14 @@
 #[path = "build/ffmpeg.rs"]
 mod ffmpeg;
 
+#[path = "build/env_config.rs"]
+mod env_config;
+
 fn main() {
+    // Bake .env.dev / .env.staging / .env.prod into the binary. All three are
+    // included; the running one is picked at runtime from the bundle identifier.
+    env_config::emit();
+
     // GPU Acceleration Detection and Build Guidance
     detect_and_report_gpu_capabilities();
 

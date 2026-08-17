@@ -6,14 +6,11 @@ import { useAuth } from '@/contexts/AuthContext';
 import { LoginScreen } from './LoginScreen';
 
 /**
- * Renders the app only once a session exists, otherwise the sign-in screen.
+ * Renders the app only once a session exists. Gating here keeps the recording,
+ * database, and transcript providers from mounting before sign-in.
  *
- * Gating here rather than inside the app means none of the recording, database,
- * or transcript providers mount before sign-in.
- *
- * A *stored* session is enough — Rust treats an expired access token as still
- * signed in and refreshes opportunistically — so this does not lock the user out
- * when they are offline mid-meeting.
+ * A stored session is enough, even with an expired token, so this does not lock
+ * the user out when offline.
  */
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const { isSignedIn, isLoading } = useAuth();

@@ -4,13 +4,12 @@ import React, { createContext, useCallback, useContext, useEffect, useState } fr
 import { authService, type Account, type SessionInfo } from '@/services/authService';
 
 interface AuthContextValue {
-  /** null while the initial session check is still running. */
+  /** null until the initial session check settles. */
   session: SessionInfo | null;
   account: Account | null;
   isSignedIn: boolean;
-  /** True until the first session check settles, so the UI can avoid flashing the login screen. */
+  /** True until the first check settles, so the login screen does not flash. */
   isLoading: boolean;
-  /** True while an interactive browser sign-in is in flight. */
   isSigningIn: boolean;
   error: string | null;
   signIn: () => Promise<void>;
@@ -25,8 +24,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Initial check. A stored session counts as signed in even if its token has
-  // expired, so this succeeds offline.
+  // A stored session counts as signed in even if expired, so this works offline.
   useEffect(() => {
     let cancelled = false;
 
@@ -38,8 +36,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.error('Failed to read sign-in state:', e);
         if (!cancelled) {
           setError(e instanceof Error ? e.message : String(e));
-          // Treat an unreadable keychain as signed out rather than hanging on a
-          // loading screen with no way forward.
+          // Unreadable keychain reads as signed out, rather than hanging forever.
           setSession({
             signed_in: false,
             account: null,

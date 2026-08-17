@@ -1,26 +1,11 @@
-//! Entra ID application settings.
-//!
-//! The tenant and client IDs are identifiers, not credentials -- Entra treats a
-//! desktop app as a *public client*, which by definition cannot hold a secret.
-//! They are safe to commit.
-//!
-//! Resolution order: environment variable first (convenient for dev and for
-//! pointing a build at a different tenant), then the compiled-in constant.
+//! Resolves Entra settings and endpoints. Per-environment IDs come from
+//! [`crate::environment`]; `MEETILY_AUTH_*` env vars override them.
 
 use anyhow::{Context, Result};
 
-/// Directory (tenant) ID from the app registration's Overview blade.
-pub const TENANT_ID: &str = "";
+use crate::environment::Environment;
 
-/// Application (client) ID from the app registration's Overview blade.
-pub const CLIENT_ID: &str = "";
-
-/// Scopes requested at sign-in.
-///
-/// `offline_access` is what yields a refresh token -- without it the session
-/// dies when the access token expires (~1 hour) and the user is bounced back to
-/// the browser. `User.Read` is only needed to read the signed-in user's own
-/// profile.
+/// `offline_access` yields the refresh token; without it the session dies hourly.
 const SCOPES: &[&str] = &["openid", "profile", "email", "offline_access", "User.Read"];
 
 #[derive(Debug, Clone)]
@@ -30,16 +15,16 @@ pub struct AuthConfig {
 }
 
 impl AuthConfig {
-    /// Reads configuration, preferring environment overrides.
-    ///
-    /// Returns an error rather than a partial config when either value is
-    /// missing, so the failure surfaces at sign-in with a clear message instead
-    /// of as an opaque redirect error from Entra.
+    /// Errors rather than returning a partial config, so a missing value surfaces
+    /// clearly at sign-in instead of as an opaque Entra redirect error.
     pub fn resolve() -> Result<Self> {
-        let tenant_id = env_or_const("MEETILY_AUTH_TENANT_ID", TENANT_ID)
-            .context("Entra tenant ID is not configured. Set MEETILY_AUTH_TENANT_ID or fill in TENANT_ID in src/auth/config.rs")?;
-        let client_id = env_or_const("MEETILY_AUTH_CLIENT_ID", CLIENT_ID)
-            .context("Entra client ID is not configured. Set MEETILY_AUTH_CLIENT_ID or fill in CLIENT_ID in src/auth/config.rs")?;
+        let env = Environment::current();
+        let registered = env.entra();
+
+        let tenant_id = env_or_const("MEETILY_AUTH_TENANT_ID", registered.tenant_id)
+            .with_context(|| format!("Entra tenant ID is not configured for the '{env}' environment. Set MEETILY_AUTH_TENANT_ID, or fill it in under Environment::{env:?} in src/environment.rs"))?;
+        let client_id = env_or_const("MEETILY_AUTH_CLIENT_ID", registered.client_id)
+            .with_context(|| format!("Entra client ID is not configured for the '{env}' environment. Set MEETILY_AUTH_CLIENT_ID, or fill it in under Environment::{env:?} in src/environment.rs"))?;
 
         Ok(Self {
             tenant_id,
@@ -47,8 +32,7 @@ impl AuthConfig {
         })
     }
 
-    /// True when both IDs are present, so the UI can explain that sign-in is
-    /// unconfigured instead of failing mid-flow.
+    /// True when both IDs are present.
     pub fn is_configured() -> bool {
         Self::resolve().is_ok()
     }

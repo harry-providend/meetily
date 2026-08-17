@@ -4,13 +4,12 @@ import React from 'react';
 import Image from 'next/image';
 import { Loader2, AlertTriangle } from 'lucide-react';
 import { Button } from './ui/button';
+import { EnvironmentBadge } from './EnvironmentBadge';
 import { useAuth } from '@/contexts/AuthContext';
 
 /**
- * Shown before the main UI when there is no stored session.
- *
- * Sign-in happens in the system browser rather than an embedded webview, so the
- * user sees the real Microsoft origin and tenant MFA / Conditional Access apply.
+ * Sign-in happens in the system browser, not an embedded webview, so the user
+ * sees the real Microsoft origin and tenant MFA applies.
  */
 export function LoginScreen() {
   const { signIn, isSigningIn, error, session } = useAuth();
@@ -28,7 +27,10 @@ export function LoginScreen() {
           className="mx-auto mb-6 h-auto w-48"
         />
 
-        <h1 className="text-lg font-semibold text-gray-900">Providend Meeting Assistant</h1>
+        <div className="flex items-center justify-center gap-2">
+          <h1 className="text-lg font-semibold text-gray-900">Providend Meeting Assistant</h1>
+          <EnvironmentBadge />
+        </div>
         <p className="mt-2 text-sm text-gray-600">
           Sign in with your Providend account to continue.
         </p>

@@ -1,9 +1,7 @@
-//! Session state and its storage in the OS keychain.
+//! Session state, stored in the OS keychain.
 //!
-//! Tokens are bearer credentials: whoever holds one *is* the user. They go to
-//! macOS Keychain / Windows Credential Manager / Secret Service, never to a
-//! plaintext store, and never across the IPC boundary into the webview. The
-//! frontend receives [`SessionInfo`], which carries identity but no tokens.
+//! Tokens are bearer credentials, so they never go to a plaintext store and never
+//! cross into the webview -- the frontend gets [`SessionInfo`], identity only.
 
 use anyhow::{Context, Result};
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -13,7 +11,6 @@ use keyring::Entry;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, warn};
 
-const KEYCHAIN_SERVICE: &str = "com.providend.meetingassistant";
 const KEYCHAIN_ACCOUNT: &str = "entra-session";
 
 /// Refresh this far before actual expiry, so a request does not race the clock.
@@ -22,10 +19,8 @@ const REFRESH_SKEW: i64 = 120;
 /// The signed-in user, as asserted by the ID token.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Account {
-    /// Immutable per-user object ID within the tenant. This is the value to key
-    /// data on later -- unlike email, it never changes.
+    /// Immutable per-tenant user ID -- the value to key data on, unlike email.
     pub oid: String,
-    /// Tenant ID, so a token from the wrong directory is detectable.
     pub tid: String,
     pub name: Option<String>,
     /// Usually the UPN / email address.
@@ -45,11 +40,9 @@ pub struct AuthSession {
 pub struct SessionInfo {
     pub signed_in: bool,
     pub account: Option<Account>,
-    /// True when the access token is past (or nearly past) its lifetime. The app
-    /// stays usable -- this only tells the UI a refresh is due.
+    /// Refresh is due. The app stays usable regardless.
     pub needs_refresh: bool,
-    /// False when the tenant/client IDs have not been filled in, so the UI can
-    /// say so plainly instead of pushing the user into a broken browser flow.
+    /// False when the Entra IDs are unset, so the UI can say so.
     pub configured: bool,
 }
 
@@ -89,11 +82,8 @@ pub fn store(session: &AuthSession) -> Result<()> {
     Ok(())
 }
 
-/// Loads the stored session, if any.
-///
-/// A corrupt entry is treated as "signed out" and cleared rather than surfaced
-/// as an error -- otherwise a bad write would lock the user out permanently with
-/// no way back through the UI.
+/// Loads the stored session, if any. A corrupt entry is cleared and treated as
+/// signed out, so a bad write cannot lock the user out permanently.
 pub fn load() -> Result<Option<AuthSession>> {
     let raw = match entry()?.get_password() {
         Ok(raw) => raw,
@@ -121,18 +111,19 @@ pub fn clear() -> Result<()> {
 }
 
 fn entry() -> Result<Entry> {
-    Entry::new(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT)
+    // Service name is per-environment, so a dev sign-in cannot overwrite the
+    // production session and signing out of one leaves the other alone.
+    let service = crate::environment::Environment::current().keychain_service();
+    Entry::new(service, KEYCHAIN_ACCOUNT)
         .context("failed to open the OS keychain entry for sign-in")
 }
 
-/// Reads identity claims out of an ID token.
+/// Reads identity claims from an ID token.
 ///
-/// The signature is not verified, and that is correct here: this token arrived
-/// over TLS directly from Entra's token endpoint in exchange for our PKCE
-/// verifier, so the transport already establishes provenance. These claims are
-/// used only to show the user who they are signed in as. A *server* accepting a
-/// token from an untrusted caller must verify the signature against JWKS -- that
-/// belongs to the backend, not here.
+/// The signature is not verified: the token came over TLS straight from Entra's
+/// token endpoint in exchange for our PKCE verifier, and the claims only display
+/// who is signed in. A server accepting tokens from untrusted callers must verify
+/// against JWKS -- that belongs to the backend.
 pub fn account_from_id_token(id_token: &str) -> Result<Account> {
     let payload = id_token
         .split('.')

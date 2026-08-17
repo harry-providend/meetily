@@ -41,6 +41,7 @@ pub mod auth;
 pub mod config;
 pub mod console_utils;
 pub mod database;
+pub mod environment;
 pub mod export;
 pub mod notifications;
 pub mod ollama;
@@ -419,6 +420,12 @@ pub fn run() {
         .setup(|_app| {
             log::info!("Application setup complete");
 
+            // Resolve the environment from the running bundle identifier before
+            // anything reads per-environment paths (database, recordings,
+            // keychain).
+            environment::Environment::init_from_identifier(&_app.config().identifier);
+            environment::apply_window_title(_app.handle());
+
             // Initialize system tray
             if let Err(e) = tray::create_tray(_app.handle()) {
                 log::error!("Failed to create system tray: {}", e);
@@ -523,6 +530,7 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            environment::get_environment,
             auth::commands::auth_get_session,
             auth::commands::auth_sign_in,
             auth::commands::auth_sign_out,

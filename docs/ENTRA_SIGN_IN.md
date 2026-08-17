@@ -1,128 +1,152 @@
-# Entra ID sign-in (Phase 1)
+# Entra ID sign-in and environments
 
-Client-side Microsoft sign-in for the desktop app. There is no backend in this
-phase — Entra authenticates the user directly with the app.
+Client-side Microsoft sign-in. No backend yet — Entra authenticates the user
+directly with the app.
 
 ## What this does and does not do
 
-**Does:** gates app entry behind a Providend account, and gives the app the
-signed-in user's identity (stable object ID, tenant, name, email).
+**Does:** gates app entry behind a Providend account and gives the app the user's
+identity (stable object ID, tenant, name, email).
 
-**Does not:** enforce access to data. The app is local-first and works offline,
-so a stored session and locally-stored meetings stay reachable. An offboarded
-user with the app still installed is not hard-stopped by this alone. Real
-enforcement arrives when the server holds the data (Phase 2). The value here is
-the token plumbing Phase 2 builds on.
+**Does not:** enforce access to data. The app is local-first and works offline, so
+a stored session and local meetings stay reachable. An offboarded user with the
+app installed is not hard-stopped by this alone. Real enforcement needs the server
+holding the data (Phase 2).
+
+## Environments
+
+Three environments, installable side by side. The bundle identifier decides which
+is running, so it cannot drift from the build.
+
+| | Identifier | Recordings | Data dir |
+|---|---|---|---|
+| dev | `com.providend.meetingassistant.dev` | `meetily-recordings-dev` | separate |
+| staging | `…assistant.staging` | `meetily-recordings-staging` | separate |
+| prod | `…assistant` | `meetily-recordings` | separate |
+
+Because the identifier differs, the OS gives each its own application-data
+directory — so database, models, and preference stores isolate automatically.
+Recordings and keychain entries live elsewhere and are suffixed explicitly.
+Non-production builds carry a badge in the UI and a tagged window title.
+
+Prod keeps the unsuffixed names so existing installs and recordings still resolve.
+
+### Running and building
+
+```bash
+pnpm tauri:dev              # dev (default)
+pnpm tauri:dev:staging
+pnpm tauri:dev:prod
+
+pnpm tauri:build            # prod (default)
+pnpm tauri:build:dev
+pnpm tauri:build:staging
+```
+
+`--config src-tauri/tauri.<env>.conf.json` is what switches the identifier. Those
+overlay files are *merged* into the base `tauri.conf.json`, so permissions, CSP,
+and bundle settings are inherited — they only override `productName` and
+`identifier`. Note the merge is a JSON merge-patch, which **replaces arrays**, so
+never override an array field (like `app.windows`) in an overlay.
+
+### Configuration
+
+Per-environment values live in `src-tauri/.env.dev`, `.env.staging`, `.env.prod`:
+
+```
+AUTH_TENANT_ID=
+AUTH_CLIENT_ID=
+API_BASE_URL=        # unused until Phase 2
+```
+
+These are committed and baked into the binary by `build.rs` at compile time — an
+installed app has no `.env` beside it to read. All three are compiled in; the
+running one is selected at runtime from the identifier.
+
+**Non-secret values only.** Never an API key, client secret, connection string, or
+password: anyone with the binary can read these out of it. Entra tenant and client
+IDs are safe because they are identifiers, not credentials — a desktop app is a
+"public client" that cannot hold a secret at all.
+
+Runtime overrides for ad-hoc testing:
+
+```bash
+MEETILY_AUTH_TENANT_ID=… MEETILY_AUTH_CLIENT_ID=… pnpm tauri:dev
+MEETILY_ENV=staging pnpm tauri:dev     # staging settings, dev data dirs
+```
 
 ## One-time Azure setup
 
-Needs someone with app-registration rights in the tenant.
+Needs app-registration rights. Repeat per environment if you want separate
+registrations; pointing all three at one to begin with is fine.
 
-1. **Portal → Microsoft Entra ID → App registrations → New registration**
-2. **Name:** `Providend Meeting Assistant`
-3. **Supported account types:** *Accounts in this organizational directory only*
-   (single tenant)
-4. **Redirect URI:** platform **Mobile and desktop applications**, value
-   `http://localhost`
-5. **Register.** From **Overview**, copy the **Application (client) ID** and the
-   **Directory (tenant) ID**.
-6. **Authentication** blade → confirm **Allow public client flows = Yes**. This
-   is what permits PKCE without a client secret. If it is off, sign-in fails with
-   a confusing `AADSTS7000218` error about a missing `client_secret`.
-7. **API permissions** → Microsoft Graph → Delegated → `User.Read` (normally
-   present by default). Grant admin consent if the tenant requires it.
+1. **Entra ID → App registrations → New registration**
+2. **Supported account types:** *this organizational directory only* (single tenant)
+3. **Redirect URI:** platform **Mobile and desktop applications**, value `http://localhost`
+4. **Register**, then copy **Application (client) ID** and **Directory (tenant) ID** from Overview
+5. **Authentication** → **Allow public client flows = Yes**. Without this, sign-in
+   fails with `AADSTS7000218` complaining about a missing `client_secret`.
+6. **API permissions** → Graph → Delegated → `User.Read`. Grant admin consent if required.
 
-Note on the redirect URI: Entra treats `http://localhost` specially and ignores
-the port when matching, so the app binds an ephemeral port each time rather than
-fighting over a fixed one. If you do hit a redirect-mismatch error, register the
-exact `http://localhost:PORT` the app logs at sign-in.
-
-## Configuring the app
-
-Neither ID is a secret — they are identifiers, and a public client cannot hold a
-secret by definition. Both are safe to commit.
-
-Either fill in the constants:
-
-```rust
-// frontend/src-tauri/src/auth/config.rs
-pub const TENANT_ID: &str = "<directory-tenant-id>";
-pub const CLIENT_ID: &str = "<application-client-id>";
-```
-
-Or set environment variables, which take precedence:
-
-```bash
-export MEETILY_AUTH_TENANT_ID=<directory-tenant-id>
-export MEETILY_AUTH_CLIENT_ID=<application-client-id>
-./clean_run.sh
-```
-
-With neither set, the app shows an explicit "sign-in is not configured" panel
-rather than pushing you into a broken browser flow.
+Entra ignores the port for `http://localhost`, so the app binds an ephemeral port
+rather than contending over a fixed one. If you hit a redirect mismatch, register
+the exact `http://localhost:PORT` the app logs.
 
 ## How the flow works
 
-1. The app binds a loopback listener on `127.0.0.1:0` and builds an authorize URL
-   carrying a PKCE `code_challenge` (S256) and a random `state`.
-2. It opens the **system browser** — not an embedded webview — so the user sees
-   the genuine Microsoft origin and tenant MFA / Conditional Access apply.
-3. Microsoft redirects back to `http://localhost:PORT/?code=…&state=…`. The
-   listener rejects any callback whose `state` does not match.
-4. Rust exchanges the code plus the PKCE `code_verifier` for tokens, over TLS,
-   directly with Entra.
-5. The session (access token, refresh token, expiry, account) goes into the OS
-   keychain: macOS Keychain, Windows Credential Manager, or Secret Service.
+1. Bind a loopback listener; build an authorize URL with a PKCE `code_challenge`
+   (S256) and random `state`.
+2. Open the **system browser** — not a webview — so the user sees the genuine
+   Microsoft origin and tenant MFA / Conditional Access apply.
+3. Microsoft redirects to `http://localhost:PORT/?code=…&state=…`. A mismatched
+   `state` is rejected.
+4. Rust exchanges the code plus the PKCE verifier for tokens, over TLS.
+5. The session goes to the OS keychain (Keychain / Credential Manager / Secret
+   Service), keyed per environment.
 
-Tokens never cross into the webview. The frontend receives only identity fields.
-
-The CSP needs no changes — the browser handles the interactive part and the token
-exchange happens in Rust, so the webview never talks to Microsoft.
+Tokens never reach the webview. The CSP needs no changes: the browser handles the
+interactive part and the token exchange happens in Rust.
 
 ## Offline behaviour
 
-A **stored** session counts as signed in even when the access token has expired.
-Refresh is attempted opportunistically and its failure is logged, not fatal. Only
-the complete absence of a stored session shows the sign-in screen. This is
-deliberate: a meeting recorder that stops working when the network drops is worse
-than one with a stale token.
+A **stored** session counts as signed in even with an expired access token.
+Refresh is opportunistic and its failure is logged, not fatal. Only a completely
+absent session shows the sign-in screen — a recorder that stops working when the
+network drops is worse than one holding a stale token.
 
-`offline_access` is among the requested scopes, which is what yields the refresh
-token. Without it the session would die roughly hourly and bounce the user back
-to the browser.
+`offline_access` is requested, which is what yields the refresh token.
 
-## Testing it
+## Testing
 
-1. Configure the two IDs, then `./clean_run.sh`.
-2. You should land on the sign-in screen rather than the app.
-3. Click **Sign in with Microsoft**; a browser opens.
-4. Complete sign-in; the tab reports success and the app proceeds.
-5. Your name or email appears above **Sign out** in the sidebar footer.
-6. Restart the app — it should go straight in, no browser.
-7. Turn off networking and restart — it should still go straight in.
-8. **Sign out**, and confirm you are returned to the sign-in screen. Local
-   meetings survive; sign-out clears the session, it does not wipe the device.
+1. `pnpm tauri:dev` → sign-in screen, with a **DEV** badge.
+2. Sign in; a browser opens; complete it; the app proceeds.
+3. Your name/email appears above **Sign out** in the sidebar footer.
+4. Restart → straight in, no browser.
+5. Disable networking and restart → still straight in.
+6. **Sign out** → back to the sign-in screen; local meetings survive.
+7. Run prod (`pnpm tauri:dev:prod`) and confirm it asks you to sign in again —
+   proving the keychain entries are separate.
 
-To confirm the keychain entry on macOS:
+Inspect the keychain entry on macOS:
 
 ```bash
-security find-generic-password -s com.providend.meetingassistant -a entra-session
+security find-generic-password -s com.providend.meetingassistant.dev -a entra-session
 ```
 
-Add `-w` to print the stored JSON — it contains live tokens, so treat that output
-as a credential.
+Add `-w` to print the stored JSON. It contains live tokens — treat as a credential.
 
 ## Files
 
 | Path | Role |
 |---|---|
-| `src-tauri/src/auth/config.rs` | Tenant/client IDs, scopes, endpoints |
+| `src-tauri/src/environment.rs` | Environment detection and per-env settings |
+| `src-tauri/build/env_config.rs` | Bakes `.env.<env>` in at compile time |
+| `src-tauri/tauri.{dev,staging}.conf.json` | Identifier overlays |
 | `src-tauri/src/auth/pkce.rs` | Code verifier and S256 challenge |
-| `src-tauri/src/auth/loopback.rs` | Single-shot redirect listener, state check |
+| `src-tauri/src/auth/loopback.rs` | Redirect listener, state check |
 | `src-tauri/src/auth/entra.rs` | Authorize URL, code redemption, refresh |
 | `src-tauri/src/auth/session.rs` | Session type, keychain I/O, ID-token claims |
 | `src-tauri/src/auth/commands.rs` | `auth_get_session`, `auth_sign_in`, `auth_sign_out` |
 | `src/contexts/AuthContext.tsx` | React session state |
 | `src/components/AuthGate.tsx` | Gate ahead of the provider tree |
-| `src/components/LoginScreen.tsx` | Sign-in UI |
-| `src/services/authService.ts` | Typed command wrappers |
+| `src/components/EnvironmentBadge.tsx` | Non-production marker |

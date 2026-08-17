@@ -1,17 +1,13 @@
-//! PKCE (Proof Key for Code Exchange), RFC 7636.
-//!
-//! A desktop app cannot hold a client secret, so the authorization code alone
-//! would be enough for anyone who intercepted the redirect to obtain tokens.
-//! PKCE closes that: we send only a hash of a fresh random secret up front, then
-//! prove possession of the secret when redeeming the code.
+//! PKCE (RFC 7636). A desktop app cannot hold a client secret, so an intercepted
+//! authorization code would otherwise be enough to obtain tokens. We send only a
+//! hash of a fresh secret up front, then prove possession when redeeming.
 
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 use rand::Rng;
 use sha2::{Digest, Sha256};
 
-/// Length of the generated verifier. RFC 7636 permits 43-128 characters; 64 is
-/// comfortably inside that range.
+/// RFC 7636 permits 43-128 characters.
 const VERIFIER_LEN: usize = 64;
 
 /// Unreserved characters permitted in a code verifier by RFC 7636.
@@ -46,8 +42,7 @@ impl Pkce {
     }
 }
 
-/// Opaque value round-tripped through the browser to bind the callback to this
-/// specific sign-in attempt, so an unrelated or replayed redirect is rejected.
+/// Binds the callback to this sign-in attempt, so a replayed redirect is rejected.
 pub fn random_state() -> String {
     uuid::Uuid::new_v4().to_string()
 }

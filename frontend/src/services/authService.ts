@@ -10,21 +10,18 @@ export interface Account {
 export interface SessionInfo {
   signed_in: boolean;
   account: Account | null;
-  /** Access token is due for renewal. Informational only — the app stays usable. */
+  /** Refresh is due. The app stays usable regardless. */
   needs_refresh: boolean;
-  /** False when the Entra tenant/client IDs have not been configured in the build. */
+  /** False when the build has no Entra IDs configured. */
   configured: boolean;
 }
 
 /**
- * Sign-in state, as reported by Rust.
- *
- * Access and refresh tokens deliberately never cross this boundary — they live
- * in the OS keychain and are only read inside Rust. Anything in the webview is
- * reachable by any script running there.
+ * Tokens never cross this boundary — they stay in the OS keychain, read only by
+ * Rust. Anything in the webview is reachable by any script running there.
  */
 export const authService = {
-  /** Current state. Attempts a token refresh if one is due; safe on every start. */
+  /** Refreshes if due. Safe to call on every start. */
   async getSession(): Promise<SessionInfo> {
     return invoke<SessionInfo>('auth_get_session');
   },
@@ -34,7 +31,7 @@ export const authService = {
     return invoke<SessionInfo>('auth_sign_in');
   },
 
-  /** Clears the stored session. Local meetings and recordings are untouched. */
+  /** Local meetings and recordings are untouched. */
   async signOut(): Promise<SessionInfo> {
     return invoke<SessionInfo>('auth_sign_out');
   },

@@ -1,14 +1,14 @@
 import React from "react";
 import Image from "next/image";
+import { EnvironmentBadge } from "./EnvironmentBadge";
 
 /**
- * Sidebar wordmark. Swap /public/logo.png to change the brand image --
- * width/height below are the current asset's intrinsic size (845x295) and
- * only set the aspect ratio; rendered width comes from the className.
+ * Sidebar wordmark. Swap /public/logo.png to rebrand; width/height are the
+ * asset's intrinsic 845x295 and only fix the aspect ratio.
  */
 const Logo: React.FC = () => {
   return (
-    <div className="mb-2 flex items-center">
+    <div className="mb-2 flex items-center gap-2">
       <Image
         src="/logo.png"
         alt="Providend Meeting Assistant"
@@ -17,6 +17,7 @@ const Logo: React.FC = () => {
         priority
         className="h-auto w-40"
       />
+      <EnvironmentBadge />
     </div>
   );
 };
