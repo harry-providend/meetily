@@ -79,6 +79,15 @@ export class RecordingService {
   }
 
   /**
+   * Switch the microphone mid-recording. System audio is unaffected.
+   * @param deviceName - Bare device name as reported by get_audio_devices
+   * @returns Promise<void>
+   */
+  async switchMicrophoneDevice(deviceName: string): Promise<void> {
+    return invoke('switch_microphone_device', { deviceName });
+  }
+
+  /**
    * Stop recording and save to file
    * @param savePath - Path to save audio file
    * @returns Promise<void>

@@ -10,6 +10,8 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import Analytics from '@/lib/analytics';
 import { useRecordingState } from '@/contexts/RecordingStateContext';
+import { useConfig } from '@/contexts/ConfigContext';
+import { LiveMicSwitcher } from '@/components/LiveMicSwitcher';
 
 interface RecordingControlsProps {
   isRecording: boolean;
@@ -44,6 +46,16 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
   // Use global recording state context for pause state (syncs with tray operations)
   const recordingState = useRecordingState();
   const isPaused = recordingState.isPaused;
+  const { setSelectedDevices } = useConfig();
+
+  // Persist a live mic switch so the next recording starts on the same device.
+  // Config stores the "Name (input)" form that DeviceSelection produces.
+  const handleMicSwitched = useCallback((deviceName: string) => {
+    setSelectedDevices({
+      micDevice: `${deviceName} (input)`,
+      systemDevice: selectedDevices?.systemDevice ?? null,
+    });
+  }, [setSelectedDevices, selectedDevices]);
 
   const [showPlayback, setShowPlayback] = useState(false);
   const [recordingPath, setRecordingPath] = useState<string | null>(null);
@@ -468,6 +480,12 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
                           <p>Stop recording</p>
                         </TooltipContent>
                       </Tooltip>
+                      <div className="w-px h-6 bg-gray-200 mx-1" />
+
+                      <LiveMicSwitcher
+                        currentMicName={selectedDevices?.micDevice ?? null}
+                        onSwitched={handleMicSwitched}
+                      />
                     </>
                   )}
 
