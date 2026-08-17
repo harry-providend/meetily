@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { ChevronDown, ChevronRight, File, Settings, Calendar, StickyNote, Home, Trash2, Mic, Square, Plus, Search, Pencil, NotebookPen, SearchIcon, X, Upload } from 'lucide-react';
+import { ChevronDown, ChevronRight, File, Settings, Calendar, StickyNote, Home, Trash2, Mic, Square, Plus, Search, Pencil, NotebookPen, SearchIcon, X, Upload, LogOut } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useSidebar } from './SidebarProvider';
 import type { CurrentMeeting } from '@/components/Sidebar/SidebarProvider';
@@ -14,6 +14,8 @@ import { toast } from 'sonner';
 import { useRecordingState } from '@/contexts/RecordingStateContext';
 import { useImportDialog } from '@/contexts/ImportDialogContext';
 import { useConfig } from '@/contexts/ConfigContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { displayName } from '@/services/authService';
 
 import {
   Dialog,
@@ -55,6 +57,7 @@ const Sidebar: React.FC = () => {
   const { isRecording } = useRecordingState();
   const { openImportDialog } = useImportDialog();
   const { betaFeatures } = useConfig();
+  const { account, signOut } = useAuth();
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['meetings']));
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [showModelSettings, setShowModelSettings] = useState(false);
@@ -663,6 +666,21 @@ const Sidebar: React.FC = () => {
             <Settings className="w-4 h-4 mr-2" />
             <span>Settings</span>
           </button>
+
+          {/* Signed-in account */}
+          <div className="mt-2 pt-2 border-t border-gray-100">
+            <div className="px-3 text-xs text-gray-600 truncate" title={displayName(account)}>
+              {displayName(account)}
+            </div>
+            <button
+              onClick={signOut}
+              className="w-full flex items-center justify-center px-3 py-1.5 mt-1 text-xs font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <LogOut className="w-3.5 h-3.5 mr-2" />
+              <span>Sign out</span>
+            </button>
+          </div>
+
           <div className="w-full flex items-center justify-center px-3 py-1 text-xs text-gray-400">
             v0.0.1
           </div>

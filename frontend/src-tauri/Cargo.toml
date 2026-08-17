@@ -122,6 +122,11 @@ dirs = "5.0.1"
 # Additional dependencies for notification system
 url = "2.5.0"
 
+# Entra ID sign-in: OS keychain for tokens, PKCE challenge, ID-token claim decoding
+keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
+sha2 = "0.10"
+base64 = "0.22"
+
 
 # System monitoring for resource management
 sysinfo = "0.32"

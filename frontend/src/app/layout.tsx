@@ -16,6 +16,8 @@ import { OllamaDownloadProvider } from '@/contexts/OllamaDownloadContext'
 import { TranscriptProvider } from '@/contexts/TranscriptContext'
 import { ConfigProvider, useConfig } from '@/contexts/ConfigContext'
 import { OnboardingProvider } from '@/contexts/OnboardingContext'
+import { AuthProvider } from '@/contexts/AuthContext'
+import { AuthGate } from '@/components/AuthGate'
 import { OnboardingFlow } from '@/components/onboarding'
 import { loadBetaFeatures } from '@/types/betaFeatures'
 import { DownloadProgressToastProvider } from '@/components/shared/DownloadProgressToast'
@@ -231,44 +233,49 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${sourceSans3.variable} font-sans antialiased`}>
-        <RecordingStateProvider>
-          <TranscriptProvider>
-            <ConfigProvider>
-              <OllamaDownloadProvider>
-                <OnboardingProvider>
-                  <SidebarProvider>
-                    <TooltipProvider>
-                      <RecordingPostProcessingProvider>
-                        <ImportDialogProvider onOpen={handleOpenImportDialog}>
-                          {/* Download progress toast provider - listens for background downloads */}
-                          <DownloadProgressToastProvider />
+        {/* Sign-in gate: nothing below mounts until a session exists */}
+        <AuthProvider>
+          <AuthGate>
+            <RecordingStateProvider>
+              <TranscriptProvider>
+                <ConfigProvider>
+                  <OllamaDownloadProvider>
+                    <OnboardingProvider>
+                      <SidebarProvider>
+                        <TooltipProvider>
+                          <RecordingPostProcessingProvider>
+                            <ImportDialogProvider onOpen={handleOpenImportDialog}>
+                              {/* Download progress toast provider - listens for background downloads */}
+                              <DownloadProgressToastProvider />
 
-                          {/* Show onboarding or main app */}
-                          {showOnboarding ? (
-                            <OnboardingFlow onComplete={handleOnboardingComplete} />
-                          ) : (
-                            <div className="flex">
-                              <Sidebar />
-                              <MainContent>{children}</MainContent>
-                            </div>
-                          )}
-                          {/* Import audio overlay and dialog */}
-                          <ImportDropOverlay visible={showDropOverlay} />
-                          <ConditionalImportDialog
-                            showImportDialog={showImportDialog}
-                            handleImportDialogClose={handleImportDialogClose}
-                            importFilePath={importFilePath}
-                          />
-                        </ImportDialogProvider>
-                      </RecordingPostProcessingProvider>
-                    </TooltipProvider>
-                  </SidebarProvider>
-                </OnboardingProvider>
+                              {/* Show onboarding or main app */}
+                              {showOnboarding ? (
+                                <OnboardingFlow onComplete={handleOnboardingComplete} />
+                              ) : (
+                                <div className="flex">
+                                  <Sidebar />
+                                  <MainContent>{children}</MainContent>
+                                </div>
+                              )}
+                              {/* Import audio overlay and dialog */}
+                              <ImportDropOverlay visible={showDropOverlay} />
+                              <ConditionalImportDialog
+                                showImportDialog={showImportDialog}
+                                handleImportDialogClose={handleImportDialogClose}
+                                importFilePath={importFilePath}
+                              />
+                            </ImportDialogProvider>
+                          </RecordingPostProcessingProvider>
+                        </TooltipProvider>
+                      </SidebarProvider>
+                    </OnboardingProvider>
 
-              </OllamaDownloadProvider>
-            </ConfigProvider>
-          </TranscriptProvider>
-        </RecordingStateProvider>
+                  </OllamaDownloadProvider>
+                </ConfigProvider>
+              </TranscriptProvider>
+            </RecordingStateProvider>
+          </AuthGate>
+        </AuthProvider>
 
         <Toaster position="bottom-center" richColors closeButton />
       </body>

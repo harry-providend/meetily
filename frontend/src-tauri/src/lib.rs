@@ -37,6 +37,7 @@ pub(crate) use perf_trace;
 // Declare audio module
 pub mod api;
 pub mod audio;
+pub mod auth;
 pub mod config;
 pub mod console_utils;
 pub mod database;
@@ -522,6 +523,9 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            auth::commands::auth_get_session,
+            auth::commands::auth_sign_in,
+            auth::commands::auth_sign_out,
             start_recording,
             stop_recording,
             is_recording,
