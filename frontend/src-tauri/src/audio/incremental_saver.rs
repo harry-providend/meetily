@@ -23,6 +23,10 @@ pub struct IncrementalAudioSaver {
     checkpoints_dir: PathBuf,
     meeting_folder: PathBuf,
     sample_rate: u32,
+    /// Every sample handed to this saver. The recording's duration is this over the sample rate,
+    /// which is what a decoder reports for the finished file -- unlike a wall clock, which drifts
+    /// from the audio, or the last transcript segment, which stops at the last word spoken.
+    samples_written: usize,
 }
 
 impl IncrementalAudioSaver {
@@ -46,6 +50,7 @@ impl IncrementalAudioSaver {
             checkpoints_dir,
             meeting_folder,
             sample_rate,
+            samples_written: 0,
         })
     }
 
@@ -57,6 +62,7 @@ impl IncrementalAudioSaver {
             // sample_rate: chunk.sample_rate,
         };
 
+        self.samples_written += audio_data.data.len();
         self.checkpoint_buffer.push(audio_data);
 
         // Calculate total samples in buffer
@@ -109,6 +115,11 @@ impl IncrementalAudioSaver {
               audio_data.len());
 
         Ok(())
+    }
+
+    /// Length of the audio written so far, in seconds.
+    pub fn duration_seconds(&self) -> f64 {
+        self.samples_written as f64 / f64::from(self.sample_rate)
     }
 
     /// Finalize the recording: save final checkpoint, merge all checkpoints, cleanup
@@ -418,6 +429,36 @@ mod tests {
     use super::*;
     use tempfile::tempdir;
     use super::super::recording_state::DeviceType;
+
+    #[test]
+    fn duration_counts_every_sample_not_just_checkpointed_ones() {
+        let temp_dir = tempdir().unwrap();
+        let meeting_folder = temp_dir.path().join("Test_Meeting");
+        std::fs::create_dir_all(meeting_folder.join(".checkpoints")).unwrap();
+
+        let mut saver = IncrementalAudioSaver::new(meeting_folder, 48000).unwrap();
+        assert_eq!(saver.duration_seconds(), 0.0);
+
+        // 45.1s, deliberately not a multiple of the 30s checkpoint interval: the tail sitting in
+        // the buffer still counts, which is the case the old duration fallback got wrong.
+        for chunk_id in 0..451 {
+            saver
+                .add_chunk(AudioChunk {
+                    data: vec![0.25f32; 4800], // 0.1s at 48kHz
+                    sample_rate: 48000,
+                    timestamp: 0.0,
+                    chunk_id,
+                    device_type: DeviceType::Microphone,
+                })
+                .unwrap();
+        }
+
+        assert!(
+            (saver.duration_seconds() - 45.1).abs() < 0.001,
+            "expected 45.1s, got {}",
+            saver.duration_seconds()
+        );
+    }
 
     #[tokio::test]
     async fn test_checkpoint_creation() {
