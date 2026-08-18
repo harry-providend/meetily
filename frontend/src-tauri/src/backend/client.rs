@@ -1,5 +1,6 @@
 //! Typed HTTP client for the Providend Meeting Assistant backend.
 
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use serde::de::DeserializeOwned;
@@ -43,8 +44,8 @@ pub struct BackendClient {
 }
 
 impl BackendClient {
-    /// Builds a client for the running environment, or `None` when no backend is configured.
-    pub fn for_current_environment() -> Option<Self> {
+    /// `None` when no backend is configured for this environment.
+    fn for_current_environment() -> Option<Self> {
         let base_url = Environment::current().api_base_url()?;
         let http = reqwest::Client::builder()
             .timeout(REQUEST_TIMEOUT)
@@ -200,7 +201,26 @@ impl BackendClient {
     }
 }
 
-/// Builds a client or explains why it could not be built.
-pub fn require_client() -> Result<BackendClient, BackendError> {
-    BackendClient::for_current_environment().ok_or(BackendError::NotConfigured)
+/// One client for the whole process: `reqwest::Client` owns the connection pool and the TLS
+/// session cache, so building one per call would re-handshake and discard keep-alive every time.
+static CLIENT: OnceLock<Option<BackendClient>> = OnceLock::new();
+
+/// The shared client, or why there isn't one.
+pub fn require_client() -> Result<&'static BackendClient, BackendError> {
+    CLIENT
+        .get_or_init(BackendClient::for_current_environment)
+        .as_ref()
+        .ok_or(BackendError::NotConfigured)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_client_is_built_once_and_shared() {
+        let first: *const _ = CLIENT.get_or_init(BackendClient::for_current_environment);
+        let second: *const _ = CLIENT.get_or_init(BackendClient::for_current_environment);
+        assert_eq!(first, second);
+    }
 }
