@@ -145,3 +145,56 @@ pub struct SummaryVersionResponse {
     pub result_json: serde_json::Value,
     pub created_at: String,
 }
+
+#[derive(Debug, Deserialize)]
+pub struct SummaryTemplateResponse {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    /// A JSON array of sections. Kept as a Value so this layer stays unaware of their shape.
+    pub sections_json: serde_json::Value,
+    pub is_builtin: bool,
+    pub user_modified: bool,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SummaryTemplateListResponse {
+    pub items: Vec<SummaryTemplateResponse>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SummaryTemplateUpsertRequest {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub sections_json: serde_json::Value,
+}
+
+/// A template as shipped in the app bundle. The app is the source of this content; the server
+/// only decides which rows it may overwrite.
+#[derive(Debug, Serialize)]
+pub struct ShippedTemplate {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub sections_json: serde_json::Value,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TemplateSeedRequest {
+    pub templates: Vec<ShippedTemplate>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TemplateSeedResponse {
+    pub written: i64,
+    pub skipped_user_modified: i64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TemplateImportResponse {
+    pub imported: Vec<String>,
+    #[allow(dead_code)]
+    pub already_present: Vec<String>,
+}

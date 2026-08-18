@@ -70,19 +70,6 @@ impl Setting {
 }
 
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
-pub struct SummaryTemplateRow {
-    pub id: String,
-    pub name: String,
-    pub description: String,
-    /// Serialized Vec<TemplateSection>
-    pub sections_json: String,
-    pub is_builtin: i64,
-    pub user_modified: i64,
-    pub created_at: String,
-    pub updated_at: String,
-}
-
-#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
 pub struct TranscriptSetting {
     pub id: String,
     pub provider: String,

@@ -1,4 +1,5 @@
-use crate::database::repositories::template::TemplatesRepository;
+use crate::backend::client::require_client;
+use crate::backend::templates::TemplatesApi;
 use crate::state::AppState;
 use crate::summary::templates::{self, TemplateSection};
 use serde::{Deserialize, Serialize};
@@ -63,11 +64,11 @@ pub struct SaveTemplateRequest {
 #[tauri::command]
 pub async fn api_list_templates<R: Runtime>(
     _app: tauri::AppHandle<R>,
-    state: tauri::State<'_, AppState>,
+    _state: tauri::State<'_, AppState>,
 ) -> Result<Vec<TemplateInfo>, String> {
-    let pool = state.db_manager.pool();
-
-    let rows = TemplatesRepository::list(pool)
+    let client = require_client().map_err(|e| e.to_string())?;
+    let rows = TemplatesApi::new(&client)
+        .list()
         .await
         .map_err(|e| format!("Failed to list templates: {}", e))?;
 
@@ -77,8 +78,8 @@ pub async fn api_list_templates<R: Runtime>(
             id: row.id,
             name: row.name,
             description: row.description,
-            is_builtin: row.is_builtin != 0,
-            user_modified: row.user_modified != 0,
+            is_builtin: row.is_builtin,
+            user_modified: row.user_modified,
             updated_at: row.updated_at,
         })
         .collect();
@@ -92,17 +93,17 @@ pub async fn api_list_templates<R: Runtime>(
 #[tauri::command]
 pub async fn api_get_template_details<R: Runtime>(
     _app: tauri::AppHandle<R>,
-    state: tauri::State<'_, AppState>,
+    _state: tauri::State<'_, AppState>,
     template_id: String,
 ) -> Result<TemplateDetails, String> {
     info!("api_get_template_details called for template_id: {}", template_id);
 
-    let pool = state.db_manager.pool();
-    let template = templates::get_template(pool, &template_id).await?;
+    let template = templates::get_template(&template_id).await?;
 
+    let client = require_client().map_err(|e| e.to_string())?;
     // A template answered by the embedded fallback is an unmodified built-in
-    let (is_builtin, user_modified) = match TemplatesRepository::get(pool, &template_id).await {
-        Ok(Some(row)) => (row.is_builtin != 0, row.user_modified != 0),
+    let (is_builtin, user_modified) = match TemplatesApi::new(&client).get(&template_id).await {
+        Ok(Some(row)) => (row.is_builtin, row.user_modified),
         Ok(None) => (true, false),
         Err(e) => {
             warn!("Failed to read template flags for '{}': {}", template_id, e);
@@ -124,10 +125,11 @@ pub async fn api_get_template_details<R: Runtime>(
 #[tauri::command]
 pub async fn api_save_template<R: Runtime>(
     _app: tauri::AppHandle<R>,
-    state: tauri::State<'_, AppState>,
+    _state: tauri::State<'_, AppState>,
     request: SaveTemplateRequest,
 ) -> Result<String, String> {
-    let pool = state.db_manager.pool();
+    let client = require_client().map_err(|e| e.to_string())?;
+    let api = TemplatesApi::new(&client);
 
     let template = templates::Template {
         name: request.name.trim().to_string(),
@@ -139,29 +141,25 @@ pub async fn api_save_template<R: Runtime>(
     let id = match request.id {
         Some(existing) => {
             let id = templates::sanitize_template_id(&existing)?;
-            if !TemplatesRepository::exists(pool, &id)
+            if api
+                .get(&id)
                 .await
-                .map_err(|e| format!("Database error: {}", e))?
+                .map_err(|e| format!("Failed to look up template: {}", e))?
+                .is_none()
             {
                 return Err(format!("Template '{}' not found", id));
             }
             id
         }
-        None => templates::derive_unique_id(pool, &template.name).await?,
+        None => templates::derive_unique_id(&template.name).await?,
     };
 
-    let sections_json = serde_json::to_string(&template.sections)
+    let sections_json = serde_json::to_value(&template.sections)
         .map_err(|e| format!("Failed to serialize sections: {}", e))?;
 
-    TemplatesRepository::upsert_user_template(
-        pool,
-        &id,
-        &template.name,
-        &template.description,
-        &sections_json,
-    )
-    .await
-    .map_err(|e| format!("Failed to save template: {}", e))?;
+    api.save(&id, &template.name, &template.description, sections_json)
+        .await
+        .map_err(|e| format!("Failed to save template: {}", e))?;
 
     info!("Saved template '{}' ({})", template.name, id);
 
@@ -172,24 +170,27 @@ pub async fn api_save_template<R: Runtime>(
 #[tauri::command]
 pub async fn api_delete_template<R: Runtime>(
     _app: tauri::AppHandle<R>,
-    state: tauri::State<'_, AppState>,
+    _state: tauri::State<'_, AppState>,
     template_id: String,
 ) -> Result<(), String> {
-    let pool = state.db_manager.pool();
     let id = templates::sanitize_template_id(&template_id)?;
+    let client = require_client().map_err(|e| e.to_string())?;
+    let api = TemplatesApi::new(&client);
 
-    let row = TemplatesRepository::get(pool, &id)
+    let row = api
+        .get(&id)
         .await
-        .map_err(|e| format!("Database error: {}", e))?
+        .map_err(|e| format!("Failed to look up template: {}", e))?
         .ok_or_else(|| format!("Template '{}' not found", id))?;
 
-    if row.is_builtin != 0 {
+    // Checked here for a clearer message; the server refuses this independently.
+    if row.is_builtin {
         return Err(
             "Built-in templates cannot be deleted. Use \"Reset to default\" instead.".to_string(),
         );
     }
 
-    TemplatesRepository::delete(pool, &id)
+    api.delete(&id)
         .await
         .map_err(|e| format!("Failed to delete template: {}", e))?;
 
@@ -202,27 +203,30 @@ pub async fn api_delete_template<R: Runtime>(
 #[tauri::command]
 pub async fn api_reset_template<R: Runtime>(
     _app: tauri::AppHandle<R>,
-    state: tauri::State<'_, AppState>,
+    _state: tauri::State<'_, AppState>,
     template_id: String,
 ) -> Result<(), String> {
-    let pool = state.db_manager.pool();
     let id = templates::sanitize_template_id(&template_id)?;
+    let client = require_client().map_err(|e| e.to_string())?;
+    let api = TemplatesApi::new(&client);
 
-    let row = TemplatesRepository::get(pool, &id)
+    let row = api
+        .get(&id)
         .await
-        .map_err(|e| format!("Database error: {}", e))?
+        .map_err(|e| format!("Failed to look up template: {}", e))?
         .ok_or_else(|| format!("Template '{}' not found", id))?;
 
-    if row.is_builtin == 0 {
+    if !row.is_builtin {
         return Err("Only built-in templates can be reset to default".to_string());
     }
 
-    // Clearing the flag makes the row eligible for seeding again
-    TemplatesRepository::clear_user_modified(pool, &id)
+    // Clearing the flag makes the row eligible for seeding again; the shipped content itself
+    // comes back from the app bundle in the seed that follows.
+    api.reset(&id)
         .await
         .map_err(|e| format!("Failed to reset template: {}", e))?;
 
-    templates::seed_shipped_templates(pool).await?;
+    templates::seed_shipped_templates().await?;
 
     info!("Reset template '{}' to its shipped definition", id);
 

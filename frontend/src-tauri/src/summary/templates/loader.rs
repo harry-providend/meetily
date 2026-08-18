@@ -1,8 +1,9 @@
 use super::defaults;
 use super::types::Template;
-use crate::database::repositories::template::TemplatesRepository;
+use crate::backend::client::require_client;
+use crate::backend::dto::ShippedTemplate;
+use crate::backend::templates::TemplatesApi;
 use once_cell::sync::Lazy;
-use sqlx::SqlitePool;
 use std::path::PathBuf;
 use std::sync::RwLock;
 use tracing::{debug, info, warn};
@@ -66,17 +67,17 @@ pub fn sanitize_template_id(raw: &str) -> Result<String, String> {
 }
 
 /// Derives an id from a display name, suffixing until it stops colliding.
-pub async fn derive_unique_id(pool: &SqlitePool, name: &str) -> Result<String, String> {
+pub async fn derive_unique_id(name: &str) -> Result<String, String> {
     let base = sanitize_template_id(name)?;
+
+    // The whole list once, rather than one existence check per candidate: over HTTP that loop
+    // would be a request per attempt.
+    let taken = list_template_ids().await?;
 
     let mut candidate = base.clone();
     let mut suffix = 2;
     loop {
-        let exists = TemplatesRepository::exists(pool, &candidate)
-            .await
-            .map_err(|e| format!("Database error checking template id: {}", e))?;
-
-        if !exists {
+        if !taken.iter().any(|id| id == &candidate) {
             return Ok(candidate);
         }
 
@@ -143,14 +144,16 @@ fn collect_shipped_templates() -> Vec<(String, String)> {
 }
 
 /// Seeds shipped templates and imports legacy ones. Safe to run on every startup.
-pub async fn seed_templates(pool: &SqlitePool) -> Result<(), String> {
-    seed_shipped_templates(pool).await?;
-    import_legacy_templates(pool).await;
+pub async fn seed_templates() -> Result<(), String> {
+    seed_shipped_templates().await?;
+    import_legacy_templates().await;
     Ok(())
 }
 
-/// Split from `seed_templates` so tests can seed without touching the data directory.
-pub async fn seed_shipped_templates(pool: &SqlitePool) -> Result<(), String> {
+/// Pushes the bundle's templates to the backend, which skips any the user has edited.
+pub async fn seed_shipped_templates() -> Result<(), String> {
+    let mut shipped: Vec<ShippedTemplate> = Vec::new();
+
     for (id, json) in collect_shipped_templates() {
         let template = match validate_and_parse_template(&json) {
             Ok(t) => t,
@@ -160,25 +163,35 @@ pub async fn seed_shipped_templates(pool: &SqlitePool) -> Result<(), String> {
             }
         };
 
-        let sections_json = serde_json::to_string(&template.sections)
-            .map_err(|e| format!("Failed to serialize sections for '{}': {}", id, e))?;
-
-        TemplatesRepository::seed_builtin(
-            pool,
-            &id,
-            &template.name,
-            &template.description,
-            &sections_json,
-        )
-        .await
-        .map_err(|e| format!("Failed to seed template '{}': {}", id, e))?;
+        shipped.push(ShippedTemplate {
+            id,
+            name: template.name,
+            description: template.description,
+            sections_json: serde_json::to_value(&template.sections)
+                .map_err(|e| format!("Failed to serialize sections: {}", e))?,
+        });
     }
+
+    if shipped.is_empty() {
+        return Ok(());
+    }
+
+    let client = require_client().map_err(|e| e.to_string())?;
+    let outcome = TemplatesApi::new(&client)
+        .seed(shipped)
+        .await
+        .map_err(|e| format!("Failed to seed templates: {}", e))?;
+
+    info!(
+        "Seeded {} template(s), left {} user-edited one(s) alone",
+        outcome.written, outcome.skipped_user_modified
+    );
 
     Ok(())
 }
 
 /// One-time import of the pre-SQLite templates directory, skipping ids already present.
-async fn import_legacy_templates(pool: &SqlitePool) {
+async fn import_legacy_templates() {
     let Some(legacy_dir) = legacy_custom_templates_dir() else {
         return;
     };
@@ -197,7 +210,7 @@ async fn import_legacy_templates(pool: &SqlitePool) {
         }
     };
 
-    let mut imported = 0usize;
+    let mut candidates: Vec<ShippedTemplate> = Vec::new();
     let mut failed = 0usize;
 
     for entry in entries.flatten() {
@@ -233,7 +246,7 @@ async fn import_legacy_templates(pool: &SqlitePool) {
             }
         };
 
-        let sections_json = match serde_json::to_string(&template.sections) {
+        let sections_json = match serde_json::to_value(&template.sections) {
             Ok(json) => json,
             Err(e) => {
                 warn!("Failed to serialize legacy template '{}': {}", raw_id, e);
@@ -242,23 +255,32 @@ async fn import_legacy_templates(pool: &SqlitePool) {
             }
         };
 
-        match TemplatesRepository::insert_if_absent(
-            pool,
-            &id,
-            &template.name,
-            &template.description,
-            &sections_json,
-            false,
-        )
-        .await
-        {
-            Ok(true) => {
-                info!("Imported legacy template '{}'", id);
-                imported += 1;
-            }
-            Ok(false) => debug!("Legacy template '{}' already present, skipping", id),
+        candidates.push(ShippedTemplate {
+            id,
+            name: template.name,
+            description: template.description,
+            sections_json,
+        });
+    }
+
+    // One request for the whole directory; the server decides which ids are free.
+    let mut imported = 0usize;
+    if !candidates.is_empty() {
+        match require_client() {
+            Ok(client) => match TemplatesApi::new(&client).import(candidates).await {
+                Ok(outcome) => {
+                    for id in &outcome.imported {
+                        info!("Imported legacy template '{}'", id);
+                    }
+                    imported = outcome.imported.len();
+                }
+                Err(e) => {
+                    warn!("Failed to import legacy templates: {}", e);
+                    failed += 1;
+                }
+            },
             Err(e) => {
-                warn!("Failed to import legacy template '{}': {}", id, e);
+                warn!("No backend available to import legacy templates: {}", e);
                 failed += 1;
             }
         }
@@ -283,16 +305,18 @@ async fn import_legacy_templates(pool: &SqlitePool) {
     }
 }
 
-/// Loads a template, falling back to the embedded copy if the row is missing.
-pub async fn get_template(pool: &SqlitePool, template_id: &str) -> Result<Template, String> {
+/// Loads a template, falling back to the embedded copy if the backend has no row for it.
+pub async fn get_template(template_id: &str) -> Result<Template, String> {
     debug!("Loading template: {}", template_id);
 
-    let row = TemplatesRepository::get(pool, template_id)
+    let client = require_client().map_err(|e| e.to_string())?;
+    let row = TemplatesApi::new(&client)
+        .get(template_id)
         .await
-        .map_err(|e| format!("Database error loading template: {}", e))?;
+        .map_err(|e| format!("Failed to load template: {}", e))?;
 
     if let Some(row) = row {
-        let sections = serde_json::from_str(&row.sections_json)
+        let sections = serde_json::from_value(row.sections_json)
             .map_err(|e| format!("Failed to parse sections for '{}': {}", template_id, e))?;
 
         let template = Template {
@@ -307,13 +331,13 @@ pub async fn get_template(pool: &SqlitePool, template_id: &str) -> Result<Templa
 
     if let Some(builtin) = defaults::get_builtin_template(template_id) {
         warn!(
-            "Template '{}' missing from database, falling back to embedded copy",
+            "Template '{}' not on the server, falling back to the embedded copy",
             template_id
         );
         return validate_and_parse_template(builtin);
     }
 
-    let available = list_template_ids(pool).await.unwrap_or_default();
+    let available = list_template_ids().await.unwrap_or_default();
     Err(format!(
         "Template '{}' not found. Available templates: {}",
         template_id,
@@ -332,10 +356,12 @@ pub fn validate_and_parse_template(json_content: &str) -> Result<Template, Strin
 }
 
 /// List all available template identifiers
-pub async fn list_template_ids(pool: &SqlitePool) -> Result<Vec<String>, String> {
-    let rows = TemplatesRepository::list(pool)
+pub async fn list_template_ids() -> Result<Vec<String>, String> {
+    let client = require_client().map_err(|e| e.to_string())?;
+    let rows = TemplatesApi::new(&client)
+        .list()
         .await
-        .map_err(|e| format!("Database error listing templates: {}", e))?;
+        .map_err(|e| format!("Failed to list templates: {}", e))?;
 
     Ok(rows.into_iter().map(|row| row.id).collect())
 }
