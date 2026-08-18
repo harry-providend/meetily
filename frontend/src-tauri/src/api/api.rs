@@ -35,7 +35,7 @@ fn into_meeting_transcript(segment: TranscriptSegmentResponse) -> MeetingTranscr
     }
 }
 
-fn into_segment_request(segment: TranscriptSegment) -> TranscriptSegmentRequest {
+pub(crate) fn into_segment_request(segment: TranscriptSegment) -> TranscriptSegmentRequest {
     TranscriptSegmentRequest {
         id: segment.id,
         transcript: segment.text,
@@ -204,7 +204,7 @@ pub struct SaveTranscriptRequest {
     pub transcripts: Vec<TranscriptSegment>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TranscriptSegment {
     pub id: String,
     pub text: String,

@@ -6,6 +6,9 @@ use super::common::{create_transcript_segments, split_segment_at_silence, write_
 use super::constants::AUDIO_EXTENSIONS;
 use crate::config::{DEFAULT_WHISPER_MODEL, DEFAULT_PARAKEET_MODEL};
 use crate::parakeet_engine::ParakeetEngine;
+use crate::api::into_segment_request;
+use crate::backend::client::require_client;
+use crate::backend::meetings::MeetingsApi;
 use crate::state::AppState;
 use crate::whisper_engine::WhisperEngine;
 use anyhow::{anyhow, Result};
@@ -421,52 +424,17 @@ async fn run_retranscription<R: Runtime>(
     // Create transcript segments with proper timestamps from VAD
     let segments = create_transcript_segments(&all_transcripts);
 
-    // Save to database
-    let app_state = app
-        .try_state::<AppState>()
-        .ok_or_else(|| anyhow!("App state not available"))?;
-
-    // Wrap delete+insert+update in a transaction to prevent data loss
-    let pool = app_state.db_manager.pool();
-    let mut conn = pool.acquire().await.map_err(|e| anyhow!("DB error: {}", e))?;
-    let mut tx = sqlx::Connection::begin(&mut *conn)
-        .await
-        .map_err(|e| anyhow!("Failed to start transaction: {}", e))?;
-
-    // Snapshot inside the same transaction so the old transcript survives this replace
-    crate::database::repositories::version::VersionsRepository::archive_transcript(
-        &mut *tx,
-        &meeting_id,
-        "retranscription",
-    )
-    .await
-    .map_err(|e| anyhow!("Failed to archive existing transcripts: {}", e))?;
-
-    sqlx::query("DELETE FROM transcripts WHERE meeting_id = ?")
-        .bind(&meeting_id)
-        .execute(&mut *tx)
-        .await
-        .map_err(|e| anyhow!("Failed to delete existing transcripts: {}", e))?;
-
-    for segment in &segments {
-        sqlx::query(
-            "INSERT INTO transcripts (id, meeting_id, transcript, timestamp, audio_start_time, audio_end_time, duration)
-             VALUES (?, ?, ?, ?, ?, ?, ?)"
+    // One request, so the archive-then-replace stays atomic: the server snapshots the existing
+    // segments as a numbered version and swaps in the new set inside a single transaction.
+    let client = require_client().map_err(|e| anyhow!("{}", e))?;
+    MeetingsApi::new(&client)
+        .replace_transcript(
+            &meeting_id,
+            "retranscription",
+            segments.iter().cloned().map(into_segment_request).collect(),
         )
-        .bind(&segment.id)
-        .bind(&meeting_id)
-        .bind(&segment.text)
-        .bind(&segment.timestamp)
-        .bind(segment.audio_start_time)
-        .bind(segment.audio_end_time)
-        .bind(segment.duration)
-        .execute(&mut *tx)
         .await
-        .map_err(|e| anyhow!("Failed to insert transcript: {}", e))?;
-    }
-
-    tx.commit().await
-        .map_err(|e| anyhow!("Failed to commit transaction: {}", e))?;
+        .map_err(|e| anyhow!("Failed to save retranscribed transcripts: {}", e))?;
 
     info!(
         "Updated {} transcripts for meeting {} in transaction",
