@@ -668,21 +668,17 @@ const Sidebar: React.FC = () => {
           </button>
 
           {/* Signed-in account */}
-          <div className="mt-2 pt-2 border-t border-gray-100">
-            <div className="px-3 text-xs text-gray-600 truncate" title={displayName(account)}>
+          <div className="mt-2 pt-2 border-t border-gray-100 flex items-center justify-between gap-2 px-3">
+            <div className="text-xs text-gray-600 truncate" title={displayName(account)}>
               {displayName(account)}
             </div>
             <button
               onClick={signOut}
-              className="w-full flex items-center justify-center px-3 py-1.5 mt-1 text-xs font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              title="Sign out"
+              className="shrink-0 p-1.5 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
             >
-              <LogOut className="w-3.5 h-3.5 mr-2" />
-              <span>Sign out</span>
+              <LogOut className="w-3.5 h-3.5" />
             </button>
-          </div>
-
-          <div className="w-full flex items-center justify-center px-3 py-1 text-xs text-gray-400">
-            v0.0.1
           </div>
         </div>
       </div>

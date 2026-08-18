@@ -1,5 +1,5 @@
 {
     "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-    "productName": "Providend Meeting Assistant Dev",
+    "productName": "Providend Meeting Dev",
     "identifier": "com.providend.meetingassistant.dev"
 }
