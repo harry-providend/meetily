@@ -119,16 +119,8 @@ async def test_transcript_of_another_users_meeting_is_not_found(client: AsyncCli
     ).status_code == 404
 
 
-async def test_notes_and_summary_upsert_round_trip(client: AsyncClient) -> None:
+async def test_directly_authored_summary_round_trip(client: AsyncClient) -> None:
     await client.post("/api/v1/meetings", headers=AUTH_A, json={"id": "m1", "title": "Call"})
-
-    notes = await client.put(
-        "/api/v1/meetings/m1/notes",
-        headers=AUTH_A,
-        json={"notes_markdown": "# agenda", "notes_json": {"blocks": []}},
-    )
-    assert notes.status_code == 200
-    assert notes.json()["notes_markdown"] == "# agenda"
 
     summary = await client.put(
         "/api/v1/meetings/m1/summary",

@@ -7,6 +7,7 @@ from collections.abc import AsyncGenerator, Iterator
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.auth.current_user import AuthenticatedUser
@@ -56,7 +57,10 @@ def database_url() -> Iterator[str]:
 async def app(database_url: str) -> AsyncGenerator[FastAPI]:
     engine = create_async_engine(database_url)
     async with engine.begin() as connection:
-        await connection.run_sync(Base.metadata.drop_all)
+        # The whole schema, not metadata.drop_all: a table removed from the models would
+        # otherwise linger with a foreign key that blocks dropping the tables that remain.
+        await connection.execute(text("DROP SCHEMA public CASCADE"))
+        await connection.execute(text("CREATE SCHEMA public"))
         await connection.run_sync(Base.metadata.create_all)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
 

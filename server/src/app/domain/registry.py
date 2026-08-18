@@ -3,24 +3,18 @@ both read it, and an unimported entity module is silently omitted from migration
 
 from app.db.base import Base
 from app.domain.meeting import MeetingEntity
-from app.domain.meeting_notes import MeetingNotesEntity
-from app.domain.outbox_entry import OutboxEntryEntity
 from app.domain.summary_process import SummaryProcessEntity
 from app.domain.summary_template import SummaryTemplateEntity
 from app.domain.summary_version import SummaryVersionEntity
 from app.domain.transcript import TranscriptEntity
-from app.domain.transcript_chunk import TranscriptChunkEntity
 from app.domain.transcript_version import TranscriptVersionEntity
 
 __all__ = [
     "Base",
     "MeetingEntity",
-    "MeetingNotesEntity",
-    "OutboxEntryEntity",
     "SummaryProcessEntity",
     "SummaryTemplateEntity",
     "SummaryVersionEntity",
-    "TranscriptChunkEntity",
     "TranscriptEntity",
     "TranscriptVersionEntity",
 ]

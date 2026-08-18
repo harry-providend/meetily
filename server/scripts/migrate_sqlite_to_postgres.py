@@ -33,11 +33,9 @@ sys.path.insert(0, str(_ROOT / "src"))
 sys.path.insert(0, str(_ROOT))
 
 from app.domain.meeting import MeetingEntity
-from app.domain.meeting_notes import MeetingNotesEntity
 from app.domain.summary_process import SummaryProcessEntity
 from app.domain.summary_version import SummaryVersionEntity
 from app.domain.transcript import TranscriptEntity
-from app.domain.transcript_chunk import TranscriptChunkEntity
 from app.domain.transcript_version import TranscriptVersionEntity
 from scripts.timestamps import UnparseableTimestampError, parse_timestamp
 
@@ -131,8 +129,6 @@ class Migrator:
         await self._copy_meetings()
         await self._copy_transcripts()
         await self._copy_summary_processes()
-        await self._copy_transcript_chunks()
-        await self._copy_meeting_notes()
         await self._copy_versions()
 
     def _timestamp(self, raw: str | None, fallback: datetime) -> datetime:
@@ -226,52 +222,6 @@ class Migrator:
             copied += 1
         self._report.copied["summary_processes"] = copied
         self._count_orphans("summary_processes")
-
-    async def _copy_transcript_chunks(self) -> None:
-        if not self._reader.table_exists("transcript_chunks"):
-            return
-        now = datetime.now(UTC)
-        copied = 0
-        for row in self._reader.rows("SELECT * FROM transcript_chunks"):
-            if str(row["meeting_id"]) not in self._meeting_ids:
-                continue
-            await self._session.merge(
-                TranscriptChunkEntity(
-                    meeting_id=row["meeting_id"],
-                    meeting_name=self._column(row, "meeting_name"),
-                    transcript_text=row["transcript_text"] or "",
-                    model=row["model"] or "",
-                    model_name=row["model_name"] or "",
-                    chunk_size=self._column(row, "chunk_size"),
-                    overlap=self._column(row, "overlap"),
-                    created_at=self._timestamp(row["created_at"], now),
-                )
-            )
-            copied += 1
-        self._report.copied["transcript_chunks"] = copied
-        self._count_orphans("transcript_chunks")
-
-    async def _copy_meeting_notes(self) -> None:
-        if not self._reader.table_exists("meeting_notes"):
-            return
-        now = datetime.now(UTC)
-        copied = 0
-        for row in self._reader.rows("SELECT * FROM meeting_notes"):
-            if str(row["meeting_id"]) not in self._meeting_ids:
-                continue
-            created = self._timestamp(row["created_at"], now)
-            await self._session.merge(
-                MeetingNotesEntity(
-                    meeting_id=row["meeting_id"],
-                    notes_markdown=self._column(row, "notes_markdown"),
-                    notes_json=self._json_object(self._column(row, "notes_json")),
-                    created_at=created,
-                    updated_at=self._timestamp(row["updated_at"], created),
-                )
-            )
-            copied += 1
-        self._report.copied["meeting_notes"] = copied
-        self._count_orphans("meeting_notes")
 
     async def _copy_versions(self) -> None:
         now = datetime.now(UTC)
@@ -429,8 +379,6 @@ async def main() -> int:
                     "meetings",
                     "transcripts",
                     "summary_processes",
-                    "transcript_chunks",
-                    "meeting_notes",
                     "transcript_versions",
                     "summary_versions",
                 )

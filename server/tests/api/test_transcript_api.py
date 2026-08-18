@@ -113,3 +113,79 @@ async def test_replacing_a_transcript_archives_the_previous_one(client: AsyncCli
 
     archived = await client.get("/api/v1/meetings/m1/transcript/versions/1", headers=AUTH_A)
     assert [s["transcript"] for s in archived.json()["segments_json"]] == ["original"]
+
+
+async def test_an_inverted_audio_window_is_rejected(client: AsyncClient) -> None:
+    # The desktop app's VAD force-end path has produced these; no path may persist one.
+    bad = {
+        "id": "t0",
+        "transcript": "SI or why you don't do this",
+        "timestamp": "00:00:00",
+        "audio_start_time": 78.93,
+        "audio_end_time": 45.09,
+        "duration": -33.84,
+    }
+
+    created = await client.post(
+        "/api/v1/meetings", headers=AUTH_A, json={"id": "m1", "title": "Bad", "segments": [bad]}
+    )
+    assert created.status_code == 422
+    assert "precedes" in created.text
+
+    # And not through the replace path either.
+    await client.post("/api/v1/meetings", headers=AUTH_A, json={"id": "m2", "title": "Bad"})
+    replaced = await client.put(
+        "/api/v1/meetings/m2/transcript",
+        headers=AUTH_A,
+        json={"reason": "retranscription", "segments": [bad]},
+    )
+    assert replaced.status_code == 422
+
+
+async def test_duration_is_derived_not_trusted(client: AsyncClient) -> None:
+    await client.post(
+        "/api/v1/meetings",
+        headers=AUTH_A,
+        json={
+            "id": "m1",
+            "title": "Timing",
+            "segments": [
+                {
+                    "id": "t0",
+                    "transcript": "hello",
+                    "timestamp": "00:00:00",
+                    "audio_start_time": 10.0,
+                    "audio_end_time": 12.5,
+                    # Wrong on purpose: it is redundant with the window, so the window wins.
+                    "duration": 999.0,
+                }
+            ],
+        },
+    )
+
+    segments = (await client.get("/api/v1/meetings/m1/transcript", headers=AUTH_A)).json()[
+        "segments"
+    ]
+    assert segments[0]["duration"] == 2.5
+
+
+async def test_a_zero_length_segment_is_allowed(client: AsyncClient) -> None:
+    # Equal start and end is degenerate but not corrupt, and real VAD output contains them.
+    created = await client.post(
+        "/api/v1/meetings",
+        headers=AUTH_A,
+        json={
+            "id": "m1",
+            "title": "Zero",
+            "segments": [
+                {
+                    "id": "t0",
+                    "transcript": "hm",
+                    "timestamp": "00:00:00",
+                    "audio_start_time": 5.0,
+                    "audio_end_time": 5.0,
+                }
+            ],
+        },
+    )
+    assert created.status_code == 201

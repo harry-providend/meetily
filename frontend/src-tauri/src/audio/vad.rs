@@ -184,7 +184,19 @@ impl ContinuousVadProcessor {
         if self.in_speech && !self.current_speech.is_empty() {
             // processed_samples and speech_start_sample always count 16kHz samples (post-resampling)
             let start_ms = (self.speech_start_sample as f64 / 16000.0) * 1000.0;
-            let end_ms = (self.processed_samples as f64 / 16000.0) * 1000.0;
+            let mut end_ms = (self.processed_samples as f64 / 16000.0) * 1000.0;
+
+            // speech_start_sample and processed_samples are separate counters, and on this
+            // force-end path the latter can lag the former, which yields an inverted segment and
+            // a negative duration downstream. The held samples are the reliable length.
+            if end_ms <= start_ms {
+                let from_samples = (self.current_speech.len() as f64 / 16000.0) * 1000.0;
+                warn!(
+                    "VAD flush: inverted segment (start={}ms, end={}ms); deriving end from {} held samples",
+                    start_ms, end_ms, self.current_speech.len()
+                );
+                end_ms = start_ms + from_samples;
+            }
 
             debug!("VAD flush: Force-ending speech - start={}ms, end={}ms, duration={}ms, samples={}",
                   start_ms, end_ms, end_ms - start_ms, self.current_speech.len());
