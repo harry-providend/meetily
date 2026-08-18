@@ -1,15 +1,7 @@
-//! Build environment: dev, staging, prod.
-//!
-//! Everything that differs per environment is defined here.
-//!
-//! The bundle identifier decides which environment is running -- each ships its
-//! own (`tauri.<env>.conf.json`), so it is baked into every artifact and cannot
-//! drift. Precedence: `MEETILY_ENV` override, then identifier, then debug/release
-//! default.
-//!
-//! Because the identifier differs, the OS gives each environment its own data
-//! directory, so the database, models, and preference stores isolate for free.
-//! Recordings and keychain entries live elsewhere and are suffixed below.
+//! Build environment: dev, staging, prod. The bundle identifier decides which is running, so it
+//! cannot drift; precedence is `MEETILY_ENV`, then identifier, then the debug/release default.
+//! A distinct identifier also gives each environment its own OS data directory, isolating the
+//! database, models and preferences for free. Recordings and keychain entries are suffixed below.
 
 use std::fmt;
 use std::sync::OnceLock;
@@ -149,15 +141,23 @@ impl Environment {
         }
     }
 
-    /// Our backend's base URL. Unused until Phase 2.
-    pub fn api_base_url(&self) -> Option<&'static str> {
+    /// Our backend's base URL, or `None` when this environment has none configured. Owned rather
+    /// than `&'static str` because `MEETILY_API_BASE_URL` can override it at runtime.
+    pub fn api_base_url(&self) -> Option<String> {
+        if let Ok(from_env) = std::env::var("MEETILY_API_BASE_URL") {
+            let trimmed = from_env.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.trim_end_matches('/').to_string());
+            }
+        }
+
         let raw = match self {
             Self::Dev => env!("ENV_DEV_API_BASE_URL"),
             Self::Staging => env!("ENV_STAGING_API_BASE_URL"),
             Self::Prod => env!("ENV_PROD_API_BASE_URL"),
         };
-        let trimmed = raw.trim();
-        (!trimmed.is_empty()).then_some(trimmed)
+        let trimmed = raw.trim().trim_end_matches('/');
+        (!trimmed.is_empty()).then(|| trimmed.to_string())
     }
 }
 
@@ -181,11 +181,8 @@ fn build_profile_default() -> Environment {
     }
 }
 
-/// Tags the window title for non-prod builds.
-///
-/// Done at runtime because `--config` is applied as a JSON merge-patch, which
-/// replaces arrays -- overriding `app.windows` in an overlay would discard the
-/// base window size and theme.
+/// Tags the window title for non-prod builds. Done at runtime because `--config` merge-patches
+/// arrays wholesale, so an `app.windows` overlay would discard the base size and theme.
 pub fn apply_window_title<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     use tauri::Manager;
 

@@ -38,6 +38,7 @@ pub(crate) use perf_trace;
 pub mod api;
 pub mod audio;
 pub mod auth;
+pub mod backend;
 pub mod config;
 pub mod console_utils;
 pub mod database;
@@ -420,9 +421,7 @@ pub fn run() {
         .setup(|_app| {
             log::info!("Application setup complete");
 
-            // Resolve the environment from the running bundle identifier before
-            // anything reads per-environment paths (database, recordings,
-            // keychain).
+            // Before anything reads per-environment paths (database, recordings, keychain).
             environment::Environment::init_from_identifier(&_app.config().identifier);
             environment::apply_window_title(_app.handle());
 
@@ -534,6 +533,7 @@ pub fn run() {
             auth::commands::auth_get_session,
             auth::commands::auth_sign_in,
             auth::commands::auth_sign_out,
+            backend::commands::backend_status,
             start_recording,
             stop_recording,
             is_recording,

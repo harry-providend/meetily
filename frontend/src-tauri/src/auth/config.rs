@@ -8,6 +8,10 @@ use crate::environment::Environment;
 /// `offline_access` yields the refresh token; without it the session dies hourly.
 const SCOPES: &[&str] = &["openid", "profile", "email", "offline_access", "User.Read"];
 
+/// Scope exposed by our own API registration, appended to [`SCOPES`] so the token is minted for
+/// the backend, not Graph. Without it `aud` is Graph and the backend rightly rejects it.
+const API_SCOPE_SUFFIX: &str = "user_impersonation";
+
 #[derive(Debug, Clone)]
 pub struct AuthConfig {
     pub tenant_id: String,
@@ -51,8 +55,16 @@ impl AuthConfig {
         )
     }
 
+    /// The API scope this app requests against its own registration. Assumes the default App ID
+    /// URI `api://<client_id>`; a custom one set in "Expose an API" must be mirrored here.
+    pub fn api_scope(&self) -> String {
+        format!("api://{}/{}", self.client_id, API_SCOPE_SUFFIX)
+    }
+
     pub fn scope_param(&self) -> String {
-        SCOPES.join(" ")
+        let mut scopes: Vec<String> = SCOPES.iter().map(|s| s.to_string()).collect();
+        scopes.push(self.api_scope());
+        scopes.join(" ")
     }
 }
 
@@ -76,6 +88,17 @@ mod tests {
         };
         // Losing offline_access silently downgrades the session to ~1 hour.
         assert!(cfg.scope_param().contains("offline_access"));
+    }
+
+    #[test]
+    fn scope_param_requests_our_own_api_not_just_graph() {
+        let cfg = AuthConfig {
+            tenant_id: "t".into(),
+            client_id: "abc-123".into(),
+        };
+        // Without this scope the access token's audience is Microsoft Graph, and the backend
+        // correctly refuses it.
+        assert!(cfg.scope_param().contains("api://abc-123/user_impersonation"));
     }
 
     #[test]
