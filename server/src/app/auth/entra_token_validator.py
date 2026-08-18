@@ -19,11 +19,11 @@ class EntraTokenValidator(TokenValidator):
     def __init__(
         self,
         jwks_client: JwksClient,
-        expected_issuer: str,
+        expected_issuers: list[str],
         expected_audiences: list[str],
     ) -> None:
         self._jwks_client = jwks_client
-        self._expected_issuer = expected_issuer
+        self._expected_issuers = expected_issuers
         self._expected_audiences = expected_audiences
 
     async def validate(self, bearer_token: str) -> AuthenticatedUser:
@@ -33,7 +33,7 @@ class EntraTokenValidator(TokenValidator):
                 bearer_token,
                 signing_key.key,
                 algorithms=["RS256"],
-                issuer=self._expected_issuer,
+                issuer=self._expected_issuers,
                 audience=self._expected_audiences,
                 options={"require": ["exp", "iss", "aud"]},
             )

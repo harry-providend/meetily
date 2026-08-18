@@ -5,11 +5,17 @@ use anyhow::{Context, Result};
 
 use crate::environment::Environment;
 
-/// `offline_access` yields the refresh token; without it the session dies hourly.
-const SCOPES: &[&str] = &["openid", "profile", "email", "offline_access", "User.Read"];
+/// OIDC scopes only. These are resource-agnostic, so they can accompany any single resource
+/// scope. `offline_access` yields the refresh token; without it the session dies hourly.
+///
+/// Deliberately no Graph scope (`User.Read` and the like). An access token has one `aud`, so one
+/// request cannot cover two resources: asking for a Graph scope alongside our own made Entra
+/// issue for Graph and silently drop ours, and the resulting token could not even be signature-
+/// checked, because Graph puts a `nonce` in the header. Nothing in the app calls Graph.
+const SCOPES: &[&str] = &["openid", "profile", "email", "offline_access"];
 
-/// Scope exposed by our own API registration, appended to [`SCOPES`] so the token is minted for
-/// the backend, not Graph. Without it `aud` is Graph and the backend rightly rejects it.
+/// Scope exposed by our own API registration. Appended to [`SCOPES`], this is the one resource
+/// the token is minted for, so `aud` becomes our App ID URI and the backend accepts it.
 const API_SCOPE_SUFFIX: &str = "user_impersonation";
 
 #[derive(Debug, Clone)]
@@ -91,14 +97,30 @@ mod tests {
     }
 
     #[test]
-    fn scope_param_requests_our_own_api_not_just_graph() {
+    fn scope_param_requests_our_own_api() {
         let cfg = AuthConfig {
             tenant_id: "t".into(),
             client_id: "abc-123".into(),
         };
-        // Without this scope the access token's audience is Microsoft Graph, and the backend
-        // correctly refuses it.
+        // Without this scope the token's audience is Microsoft Graph, which the backend refuses.
         assert!(cfg.scope_param().contains("api://abc-123/user_impersonation"));
+    }
+
+    #[test]
+    fn scope_param_names_exactly_one_resource() {
+        let cfg = AuthConfig {
+            tenant_id: "t".into(),
+            client_id: "abc-123".into(),
+        };
+        let scopes = cfg.scope_param();
+        // A token carries one `aud`. Mixing in a Graph scope made Entra issue for Graph and drop
+        // ours, producing a token the backend could not validate at all.
+        for graph_scope in ["User.Read", "Mail.Read", "https://graph.microsoft.com"] {
+            assert!(
+                !scopes.contains(graph_scope),
+                "{scopes} must not request the Graph resource"
+            );
+        }
     }
 
     #[test]

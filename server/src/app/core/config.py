@@ -19,8 +19,15 @@ class Settings(BaseSettings):
         return f"https://login.microsoftonline.com/{self.entra_tenant_id}/discovery/v2.0/keys"
 
     @property
-    def entra_expected_issuer(self) -> str:
-        return f"https://login.microsoftonline.com/{self.entra_tenant_id}/v2.0"
+    def entra_accepted_issuers(self) -> list[str]:
+        """Both issuer spellings for this tenant, for the same reason as both audience spellings:
+        the registration's accessTokenAcceptedVersion decides which one a token carries. v2 tokens
+        come from login.microsoftonline.com/v2.0, v1 tokens from sts.windows.net. Both name this
+        one tenant, so a token from any other tenant still fails."""
+        return [
+            f"https://login.microsoftonline.com/{self.entra_tenant_id}/v2.0",
+            f"https://sts.windows.net/{self.entra_tenant_id}/",
+        ]
 
     @property
     def entra_accepted_audiences(self) -> list[str]:

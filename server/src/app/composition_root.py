@@ -12,6 +12,6 @@ def get_token_validator() -> TokenValidator:
     settings = get_settings()
     return EntraTokenValidator(
         jwks_client=JwksClient(settings.entra_jwks_uri),
-        expected_issuer=settings.entra_expected_issuer,
+        expected_issuers=settings.entra_accepted_issuers,
         expected_audiences=settings.entra_accepted_audiences,
     )
