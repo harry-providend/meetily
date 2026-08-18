@@ -172,6 +172,31 @@ class DefaultSummaryService(SummaryService):
         saved = await self._summary_process_repository.save(entity)
         return SummaryProcessResponse.model_validate(saved)
 
+    async def restore_version(
+        self, current_user: AuthenticatedUser, meeting_id: str, version: int
+    ) -> SummaryProcessResponse:
+        entity = await self._require_process(current_user, meeting_id)
+
+        target = await self._version_repository.find_version_for_meeting(meeting_id, version)
+        if target is None:
+            raise NotFoundException(f"version {version} not found for meeting {meeting_id}")
+
+        # Archive what the restore displaces, so restoring is undoable too.
+        if entity.result is not None:
+            await self._archive(meeting_id, entity.result, reason="restore")
+
+        entity.result = json.dumps(target.result_json)
+        entity.status = "completed"
+        entity.error = None
+        entity.updated_at = datetime.now(UTC)
+        # A restore is not a generation run, so any in-flight rollback state is now meaningless.
+        entity.result_backup = None
+        entity.result_backup_timestamp = None
+
+        return SummaryProcessResponse.model_validate(
+            await self._summary_process_repository.save(entity)
+        )
+
     async def list_versions(
         self, current_user: AuthenticatedUser, meeting_id: str
     ) -> list[SummaryVersionResponse]:

@@ -79,6 +79,17 @@ async def list_summary_versions(
     return await summary_service.list_versions(current_user, meeting_id)
 
 
+@router.post("/summary/versions/{version}/restore")
+async def restore_summary_version(
+    current_user: CurrentUserDep,
+    summary_service: SummaryServiceDep,
+    meeting_id: str,
+    version: int,
+) -> SummaryProcessResponse:
+    """Archives the current summary, then swaps in the requested version."""
+    return await summary_service.restore_version(current_user, meeting_id, version)
+
+
 @router.get("/summary/versions/{version}")
 async def get_summary_version(
     current_user: CurrentUserDep,

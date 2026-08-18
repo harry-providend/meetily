@@ -115,3 +115,33 @@ pub struct SummaryUpsertRequest {
     pub status: String,
     pub result: Option<String>,
 }
+
+#[derive(Debug, Deserialize)]
+pub struct TranscriptVersionResponse {
+    pub version: i64,
+    pub reason: String,
+    pub segment_count: i64,
+    pub created_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TranscriptVersionDetailResponse {
+    pub segments_json: Vec<ArchivedSegment>,
+}
+
+/// One segment inside an archived transcript version.
+#[derive(Debug, Deserialize)]
+pub struct ArchivedSegment {
+    pub transcript: String,
+    pub timestamp: String,
+    pub audio_start_time: Option<f64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SummaryVersionResponse {
+    pub version: i64,
+    pub reason: String,
+    /// Decoded object, not the raw string the local schema stored.
+    pub result_json: serde_json::Value,
+    pub created_at: String,
+}

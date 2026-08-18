@@ -40,6 +40,17 @@ async def list_transcript_versions(
     return await transcript_service.list_versions(current_user, meeting_id)
 
 
+@router.post("/transcript/versions/{version}/restore")
+async def restore_transcript_version(
+    current_user: CurrentUserDep,
+    transcript_service: TranscriptServiceDep,
+    meeting_id: str,
+    version: int,
+) -> TranscriptResponse:
+    """Archives the current transcript, then swaps in the requested version."""
+    return await transcript_service.restore_version(current_user, meeting_id, version)
+
+
 @router.get("/transcript/versions/{version}")
 async def get_transcript_version(
     current_user: CurrentUserDep,

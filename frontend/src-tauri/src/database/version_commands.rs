@@ -1,6 +1,5 @@
-use crate::database::models::ArchivedSegment;
-use crate::database::repositories::version::VersionsRepository;
-use crate::state::AppState;
+use crate::backend::client::{require_client, BackendError};
+use crate::backend::versions::VersionsApi;
 use serde::{Deserialize, Serialize};
 
 /// One row in the version history list.
@@ -15,11 +14,10 @@ pub struct VersionInfo {
 }
 
 #[tauri::command]
-pub async fn api_list_transcript_versions(
-    meeting_id: String,
-    state: tauri::State<'_, AppState>,
-) -> Result<Vec<VersionInfo>, String> {
-    let rows = VersionsRepository::list_transcript_versions(state.db_manager.pool(), &meeting_id)
+pub async fn api_list_transcript_versions(meeting_id: String) -> Result<Vec<VersionInfo>, String> {
+    let client = require_client().map_err(|e| e.to_string())?;
+    let rows = VersionsApi::new(&client)
+        .list_transcript_versions(&meeting_id)
         .await
         .map_err(|e| format!("Failed to list transcript versions: {}", e))?;
 
@@ -35,18 +33,17 @@ pub async fn api_list_transcript_versions(
 }
 
 #[tauri::command]
-pub async fn api_list_summary_versions(
-    meeting_id: String,
-    state: tauri::State<'_, AppState>,
-) -> Result<Vec<VersionInfo>, String> {
-    let rows = VersionsRepository::list_summary_versions(state.db_manager.pool(), &meeting_id)
+pub async fn api_list_summary_versions(meeting_id: String) -> Result<Vec<VersionInfo>, String> {
+    let client = require_client().map_err(|e| e.to_string())?;
+    let rows = VersionsApi::new(&client)
+        .list_summary_versions(&meeting_id)
         .await
         .map_err(|e| format!("Failed to list summary versions: {}", e))?;
 
     Ok(rows
         .into_iter()
         .map(|r| {
-            let markdown = summary_json_to_markdown(&r.result_json);
+            let markdown = summary_value_to_markdown(&r.result_json);
             VersionInfo {
                 version: r.version,
                 reason: r.reason,
@@ -62,21 +59,18 @@ pub async fn api_list_summary_versions(
 pub async fn api_render_transcript_version(
     meeting_id: String,
     version: i64,
-    state: tauri::State<'_, AppState>,
 ) -> Result<String, String> {
-    let row = VersionsRepository::get_transcript_version(
-        state.db_manager.pool(),
-        &meeting_id,
-        version,
-    )
-    .await
-    .map_err(|e| format!("Failed to read transcript version: {}", e))?
-    .ok_or_else(|| format!("Transcript version {} not found", version))?;
+    let client = require_client().map_err(|e| e.to_string())?;
+    let row = VersionsApi::new(&client)
+        .get_transcript_version(&meeting_id, version)
+        .await
+        .map_err(|e| match e {
+            BackendError::NotFound => format!("Transcript version {} not found", version),
+            other => format!("Failed to read transcript version: {}", other),
+        })?;
 
-    let segments: Vec<ArchivedSegment> = serde_json::from_str(&row.segments_json)
-        .map_err(|e| format!("Transcript version {} is not readable: {}", version, e))?;
-
-    Ok(segments
+    Ok(row
+        .segments_json
         .iter()
         .map(|s| format!("{} {}  ", format_offset(s.audio_start_time, &s.timestamp), s.transcript))
         .collect::<Vec<_>>()
@@ -88,35 +82,36 @@ pub async fn api_render_transcript_version(
 pub async fn api_render_summary_version(
     meeting_id: String,
     version: i64,
-    state: tauri::State<'_, AppState>,
 ) -> Result<String, String> {
-    let row =
-        VersionsRepository::get_summary_version(state.db_manager.pool(), &meeting_id, version)
-            .await
-            .map_err(|e| format!("Failed to read summary version: {}", e))?
-            .ok_or_else(|| format!("Summary version {} not found", version))?;
+    let client = require_client().map_err(|e| e.to_string())?;
+    let row = VersionsApi::new(&client)
+        .get_summary_version(&meeting_id, version)
+        .await
+        .map_err(|e| match e {
+            BackendError::NotFound => format!("Summary version {} not found", version),
+            other => format!("Failed to read summary version: {}", other),
+        })?;
 
-    Ok(summary_json_to_markdown(&row.result_json))
+    Ok(summary_value_to_markdown(&row.result_json))
 }
 
 #[tauri::command]
 pub async fn api_restore_transcript_version(
     meeting_id: String,
     version: i64,
-    state: tauri::State<'_, AppState>,
 ) -> Result<usize, String> {
-    VersionsRepository::restore_transcript_version(state.db_manager.pool(), &meeting_id, version)
+    let client = require_client().map_err(|e| e.to_string())?;
+    VersionsApi::new(&client)
+        .restore_transcript_version(&meeting_id, version)
         .await
         .map_err(|e| format!("Failed to restore transcript version {}: {}", version, e))
 }
 
 #[tauri::command]
-pub async fn api_restore_summary_version(
-    meeting_id: String,
-    version: i64,
-    state: tauri::State<'_, AppState>,
-) -> Result<(), String> {
-    VersionsRepository::restore_summary_version(state.db_manager.pool(), &meeting_id, version)
+pub async fn api_restore_summary_version(meeting_id: String, version: i64) -> Result<(), String> {
+    let client = require_client().map_err(|e| e.to_string())?;
+    VersionsApi::new(&client)
+        .restore_summary_version(&meeting_id, version)
         .await
         .map_err(|e| format!("Failed to restore summary version {}: {}", version, e))
 }
@@ -135,17 +130,13 @@ fn format_offset(seconds: Option<f64>, fallback: &str) -> String {
 
 /// Summaries are stored as `{"markdown": "..."}`; older rows may hold the
 /// section map the pre-BlockNote UI used.
-fn summary_json_to_markdown(raw: &str) -> String {
-    let Ok(value) = serde_json::from_str::<serde_json::Value>(raw) else {
-        return raw.to_string();
-    };
-
+fn summary_value_to_markdown(value: &serde_json::Value) -> String {
     if let Some(markdown) = value.get("markdown").and_then(|m| m.as_str()) {
         return markdown.to_string();
     }
 
     let Some(sections) = value.as_object() else {
-        return raw.to_string();
+        return value.to_string();
     };
 
     sections
@@ -179,23 +170,29 @@ mod tests {
 
     #[test]
     fn test_summary_json_prefers_markdown_field() {
-        assert_eq!(
-            summary_json_to_markdown("{\"markdown\":\"## Notes\\n\\n- one\"}"),
-            "## Notes\n\n- one"
-        );
+        let value = serde_json::json!({"markdown": "## Notes\n\n- one"});
+        assert_eq!(summary_value_to_markdown(&value), "## Notes\n\n- one");
     }
 
     #[test]
     fn test_summary_json_renders_legacy_sections() {
-        let raw = r#"{"a":{"title":"Action Items","blocks":[{"content":"Ship it"}]}}"#;
+        let value = serde_json::json!({
+            "a": {"title": "Action Items", "blocks": [{"content": "Ship it"}]}
+        });
         assert_eq!(
-            summary_json_to_markdown(raw),
+            summary_value_to_markdown(&value),
             "## Action Items\n\n- Ship it"
         );
     }
 
     #[test]
-    fn test_summary_json_falls_back_to_raw() {
-        assert_eq!(summary_json_to_markdown("not json"), "not json");
+    fn test_summary_json_falls_back_to_the_raw_json_for_an_unexpected_shape() {
+        // The server sends decoded JSON, so this can no longer be unparseable text -- only an
+        // object shape neither renderer recognises.
+        let value = serde_json::json!(["not", "an", "object"]);
+        assert_eq!(
+            summary_value_to_markdown(&value),
+            r#"["not","an","object"]"#
+        );
     }
 }

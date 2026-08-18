@@ -1,9 +1,9 @@
 from datetime import UTC, datetime
 
-from pydantic import JsonValue
+from pydantic import JsonValue, ValidationError
 
 from app.auth.current_user import AuthenticatedUser
-from app.core.exceptions import NotFoundException
+from app.core.exceptions import ConflictException, NotFoundException
 from app.domain.transcript import TranscriptEntity
 from app.domain.transcript_version import TranscriptVersionEntity
 from app.repositories.interfaces.transcript_repository import TranscriptRepository
@@ -14,6 +14,7 @@ from app.schemas.transcript_dto import (
     TranscriptResponse,
     TranscriptSearchHit,
     TranscriptSearchResponse,
+    TranscriptSegmentRequest,
     TranscriptSegmentResponse,
 )
 from app.services.implementations.match_context_extractor import MatchContextExtractor
@@ -106,6 +107,30 @@ class DefaultTranscriptService(TranscriptService):
             ]
         )
         return await self.get_transcript(current_user, meeting_id)
+
+    async def restore_version(
+        self, current_user: AuthenticatedUser, meeting_id: str, version: int
+    ) -> TranscriptResponse:
+        await self._ownership_guard.require_owned_meeting(current_user, meeting_id)
+
+        target = await self._version_repository.find_version_for_meeting(meeting_id, version)
+        if target is None:
+            raise NotFoundException(f"version {version} not found for meeting {meeting_id}")
+
+        # Validated through the same DTO as an ordinary write, so a malformed archive is a clear
+        # 422 rather than an integrity error deeper down.
+        try:
+            segments = [
+                TranscriptSegmentRequest.model_validate(segment) for segment in target.segments_json
+            ]
+        except ValidationError as exc:
+            raise ConflictException(f"version {version} is not readable: {exc}") from exc
+
+        return await self.replace_transcript(
+            current_user,
+            meeting_id,
+            TranscriptReplaceRequest(reason="restore", segments=segments),
+        )
 
     async def list_versions(
         self, current_user: AuthenticatedUser, meeting_id: str

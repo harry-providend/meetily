@@ -31,6 +31,13 @@ class TranscriptService(ABC):
     ) -> TranscriptResponse: ...
 
     @abstractmethod
+    async def restore_version(
+        self, current_user: AuthenticatedUser, meeting_id: str, version: int
+    ) -> TranscriptResponse:
+        """Replaces the live transcript with an archived one, archiving what it replaces first so
+        the restore is itself undoable."""
+
+    @abstractmethod
     async def list_versions(
         self, current_user: AuthenticatedUser, meeting_id: str
     ) -> list[TranscriptVersionResponse]: ...

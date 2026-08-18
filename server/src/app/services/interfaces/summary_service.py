@@ -46,6 +46,13 @@ class SummaryService(ABC):
     ) -> SummaryProcessResponse: ...
 
     @abstractmethod
+    async def restore_version(
+        self, current_user: AuthenticatedUser, meeting_id: str, version: int
+    ) -> SummaryProcessResponse:
+        """Replaces the live summary with an archived one, archiving what it replaces first so the
+        restore is itself undoable."""
+
+    @abstractmethod
     async def list_versions(
         self, current_user: AuthenticatedUser, meeting_id: str
     ) -> list[SummaryVersionResponse]: ...
