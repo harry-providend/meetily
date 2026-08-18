@@ -1,7 +1,5 @@
-//! Summary templates against the backend.
-//!
-//! Shipped template content stays in the app bundle -- the server holds only which rows exist and
-//! whether the user has edited them -- so seeding is a push from here rather than a fixture there.
+//! Summary templates. Shipped content stays in the app bundle and the server holds only row state,
+//! so seeding is a push from here.
 
 use crate::backend::client::{BackendClient, BackendError};
 use crate::backend::dto::{

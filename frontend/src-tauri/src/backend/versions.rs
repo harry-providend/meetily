@@ -1,8 +1,5 @@
-//! Transcript and summary version history.
-//!
-//! Restores go through the server as one request each: the local implementation wrapped
-//! archive-then-replace in a transaction, and splitting that across HTTP calls would leave a
-//! meeting with no transcript if the second call failed.
+//! Transcript and summary version history. A restore is one request, since splitting
+//! archive-then-replace across calls could leave a meeting with no transcript.
 
 use crate::backend::client::{BackendClient, BackendError};
 use crate::backend::dto::{

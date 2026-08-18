@@ -1,8 +1,5 @@
-"""Refuses to run the destructive suites against a database that is not clearly a test one.
-
-Both API and integration fixtures drop_all/create_all. Pointing MEETILY_TEST_DATABASE_URL at a
-development database therefore erases it, so the name must opt in.
-"""
+"""Refuses to run the destructive suites against a database whose name does not opt in. The
+fixtures drop every table, so a development database pointed at here would be erased."""
 
 import os
 

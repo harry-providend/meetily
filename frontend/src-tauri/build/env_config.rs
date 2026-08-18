@@ -1,6 +1,5 @@
-//! Bakes `.env.<name>` into the binary -- an installed app has no `.env` beside it. All three
-//! are baked in and chosen at runtime from the bundle identifier, so the target env need not be
-//! known at compile time. Non-secret configuration only.
+//! Bakes `.env.<name>` into the binary. All three are included; the running one is picked at
+//! runtime from the bundle identifier. Non-secret configuration only.
 
 use std::collections::HashMap;
 use std::fs;
@@ -30,8 +29,7 @@ pub fn emit() {
     }
 }
 
-/// Parses a minimal `KEY=VALUE` file. Blank lines and `#` comments are skipped;
-/// surrounding single or double quotes are stripped.
+/// Parses a minimal `KEY=VALUE` file, skipping blanks and `#` comments.
 fn read_env_file(path: &Path) -> HashMap<String, String> {
     let mut values = HashMap::new();
 

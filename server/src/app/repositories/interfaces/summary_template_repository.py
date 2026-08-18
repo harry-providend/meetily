@@ -4,8 +4,7 @@ from app.domain.summary_template import SummaryTemplateEntity
 
 
 class SummaryTemplateRepository(ABC):
-    """Owned per user, like meetings: every method takes the owner, and there is no unfiltered
-    read. Builtin-ness is a property of the row, not of who can see it."""
+    """Owned per user, like meetings: every method takes the owner."""
 
     @abstractmethod
     async def find_all_for_owner(

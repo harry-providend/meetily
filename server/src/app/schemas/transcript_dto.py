@@ -16,8 +16,7 @@ class TranscriptSegmentResponse(BaseModel):
 
 
 class TranscriptResponse(BaseModel):
-    """`total` is the segment count for the whole meeting, not this page, so a caller reading
-    incrementally knows when to stop."""
+    """`total` counts the whole meeting, not this page."""
 
     meeting_id: str
     segments: list[TranscriptSegmentResponse]
@@ -25,14 +24,8 @@ class TranscriptResponse(BaseModel):
 
 
 class TranscriptSegmentRequest(BaseModel):
-    """Rejects a segment whose audio window runs backwards, and derives duration rather than
-    trusting it.
-
-    The desktop app has produced inverted segments (the VAD's force-end path can report an end
-    before the start), and duration is redundant with the other two, so a client-supplied value
-    can only ever disagree with them. Enforced here because this is the single writer for every
-    path: live recording, recovery, retranscription and import.
-    """
+    """Rejects a backwards audio window and derives duration, which is redundant with it. Enforced
+    here because this is the single writer for every path."""
 
     id: str = Field(min_length=1)
     transcript: str

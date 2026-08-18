@@ -1,7 +1,5 @@
-//! Meeting and transcript operations against the backend.
-//!
-//! Wraps a [`BackendClient`] rather than extending it, so the transport stays unaware of which
-//! aggregates exist and each aggregate gets its own module as the migration proceeds.
+//! Meeting and transcript operations. Wraps a [`BackendClient`] rather than extending it, so the
+//! transport stays unaware of which aggregates exist.
 
 use crate::backend::client::{BackendClient, BackendError};
 use crate::backend::dto::{
@@ -21,10 +19,8 @@ impl<'a> MeetingsApi<'a> {
         Self { client }
     }
 
-    /// Every meeting the signed-in user owns, oldest page first.
-    ///
-    /// Pages internally rather than exposing pagination: the sidebar has always shown the full
-    /// list, and changing that is a UI decision, not something this layer should force.
+    /// Every meeting the signed-in user owns. Pages internally: whether the sidebar paginates is a
+    /// UI decision, not this layer's.
     pub async fn list_all(&self) -> Result<Vec<MeetingResponse>, BackendError> {
         let mut collected: Vec<MeetingResponse> = Vec::new();
         let mut page = 1_i64;

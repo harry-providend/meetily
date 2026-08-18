@@ -1,5 +1,5 @@
-//! Tauri commands for sign-in. A stored session counts as signed in even with an expired access
-//! token, so refresh is opportunistic and its failure is not fatal.
+//! Tauri commands for sign-in. A stored session counts as signed in even with an expired token,
+//! so refresh failure is not fatal.
 
 use tauri::command;
 use tracing::{info, warn};
@@ -73,8 +73,8 @@ pub async fn auth_sign_out() -> Result<SessionInfo, String> {
     Ok(SessionInfo::signed_out(AuthConfig::is_configured()))
 }
 
-/// Returns a usable access token, refreshing if needed. Deliberately not a Tauri command:
-/// tokens must not reach the webview. This is the seam the backend client uses.
+/// Returns a usable access token, refreshing if needed. Not a Tauri command: tokens must not
+/// reach the webview.
 #[allow(dead_code)]
 pub async fn access_token() -> anyhow::Result<String> {
     use anyhow::Context;

@@ -1,5 +1,5 @@
-//! Entra authorization-code + PKCE flow. Uses the *system* browser, not an embedded webview, so
-//! the user sees the genuine Microsoft origin and tenant MFA / Conditional Access apply.
+//! Entra authorization-code + PKCE flow, through the system browser so the user sees the genuine
+//! Microsoft origin and tenant policy applies.
 
 use anyhow::{bail, Context, Result};
 use chrono::{Duration, Utc};
@@ -32,8 +32,7 @@ struct TokenErrorResponse {
     error_description: Option<String>,
 }
 
-/// Runs the interactive sign-in. The loopback wait goes to a blocking task so the
-/// runtime is not stalled while the user is in the browser.
+/// Runs the interactive sign-in. The loopback wait is blocking, hence the spawned task.
 pub async fn interactive_login() -> Result<AuthSession> {
     let config = AuthConfig::resolve()?;
 
@@ -91,8 +90,7 @@ pub async fn refresh(session: &AuthSession) -> Result<AuthSession> {
 
     let tokens = post_token_request(&config, form).await?;
 
-    // A refresh response legitimately omits id_token, in which case identity is
-    // unchanged -- keep the account we already know rather than failing.
+    // A refresh may omit id_token, meaning identity is unchanged.
     let account = tokens
         .id_token
         .as_deref()
@@ -109,8 +107,7 @@ pub async fn refresh(session: &AuthSession) -> Result<AuthSession> {
 
     Ok(AuthSession {
         access_token: tokens.access_token,
-        // Entra may omit a new refresh token; the existing one stays valid and
-        // must be carried forward or the next refresh fails.
+        // Entra may omit a new refresh token; the existing one must be carried forward.
         refresh_token: tokens
             .refresh_token
             .or_else(|| session.refresh_token.clone()),
@@ -214,8 +211,7 @@ fn open_in_browser(url: &str) -> Result<()> {
     use std::process::Command;
 
     let result = if cfg!(target_os = "windows") {
-        // The empty title argument is required: `start` treats a single quoted
-        // argument as the window title rather than the target.
+        // `start` treats a lone quoted argument as the window title, hence the empty one.
         Command::new("cmd").args(["/C", "start", "", url]).spawn()
     } else if cfg!(target_os = "macos") {
         Command::new("open").arg(url).spawn()

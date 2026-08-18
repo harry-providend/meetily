@@ -24,8 +24,7 @@ class MeetingListResponse(BaseModel):
 
 
 class MeetingCreateRequest(BaseModel):
-    """Segments may be supplied with the meeting so recording finalisation is one request, and
-    one transaction: a meeting is never persisted without the transcript it was created for."""
+    """Segments may be supplied with the meeting, so finalisation is one transaction."""
 
     id: str = Field(min_length=1)
     title: str = Field(min_length=1)

@@ -1,8 +1,5 @@
-//! Summary generation against the backend.
-//!
-//! Generation is a run, not a single write: [`start`](SummariesApi::start) stashes the summary
-//! being replaced, and exactly one of complete/fail/cancel ends the run. Failing to end it leaves
-//! the row in PENDING, so every exit path from generation must call one of them.
+//! Summary generation. A run, not a single write: [`start`](SummariesApi::start) must be followed
+//! by exactly one of complete/fail/cancel, or the row is left PENDING.
 
 use crate::backend::client::{BackendClient, BackendError};
 use crate::backend::dto::{

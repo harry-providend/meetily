@@ -5,17 +5,11 @@ use anyhow::{Context, Result};
 
 use crate::environment::Environment;
 
-/// OIDC scopes only. These are resource-agnostic, so they can accompany any single resource
-/// scope. `offline_access` yields the refresh token; without it the session dies hourly.
-///
-/// Deliberately no Graph scope (`User.Read` and the like). An access token has one `aud`, so one
-/// request cannot cover two resources: asking for a Graph scope alongside our own made Entra
-/// issue for Graph and silently drop ours, and the resulting token could not even be signature-
-/// checked, because Graph puts a `nonce` in the header. Nothing in the app calls Graph.
+/// OIDC scopes only, which are resource-agnostic. No Graph scope: a token has one `aud`, so one
+/// request cannot cover two resources, and nothing here calls Graph.
 const SCOPES: &[&str] = &["openid", "profile", "email", "offline_access"];
 
-/// Scope exposed by our own API registration. Appended to [`SCOPES`], this is the one resource
-/// the token is minted for, so `aud` becomes our App ID URI and the backend accepts it.
+/// Scope exposed by our own API registration, and the one resource the token is minted for.
 const API_SCOPE_SUFFIX: &str = "user_impersonation";
 
 #[derive(Debug, Clone)]
@@ -25,8 +19,7 @@ pub struct AuthConfig {
 }
 
 impl AuthConfig {
-    /// Errors rather than returning a partial config, so a missing value surfaces
-    /// clearly at sign-in instead of as an opaque Entra redirect error.
+    /// Errors rather than returning a partial config, so a missing value surfaces at sign-in.
     pub fn resolve() -> Result<Self> {
         let env = Environment::current();
         let registered = env.entra();
@@ -61,8 +54,7 @@ impl AuthConfig {
         )
     }
 
-    /// The API scope this app requests against its own registration. Assumes the default App ID
-    /// URI `api://<client_id>`; a custom one set in "Expose an API" must be mirrored here.
+    /// Assumes the default App ID URI `api://<client_id>`; a custom one must be mirrored here.
     pub fn api_scope(&self) -> String {
         format!("api://{}/{}", self.client_id, API_SCOPE_SUFFIX)
     }
@@ -113,8 +105,7 @@ mod tests {
             client_id: "abc-123".into(),
         };
         let scopes = cfg.scope_param();
-        // A token carries one `aud`. Mixing in a Graph scope made Entra issue for Graph and drop
-        // ours, producing a token the backend could not validate at all.
+        // A token carries one `aud`, so a Graph scope here would displace our own.
         for graph_scope in ["User.Read", "Mail.Read", "https://graph.microsoft.com"] {
             assert!(
                 !scopes.contains(graph_scope),

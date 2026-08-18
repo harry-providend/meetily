@@ -4,8 +4,7 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 
 class SummaryProcessResponse(BaseModel):
-    """result_backup is deliberately not exposed: it is server-side rollback state for one
-    in-flight run, and a client that could read or set it could corrupt the rollback."""
+    """result_backup is not exposed: a client that could set it could corrupt the rollback."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -23,8 +22,7 @@ class SummaryProcessResponse(BaseModel):
 
 
 class SummaryCompleteRequest(BaseModel):
-    """`result` is the summary document. `english_cache` is the generator's reusable English pass,
-    sent separately so it never ends up inside the document or in version history."""
+    """The cache travels beside the document, never inside it."""
 
     result: str = Field(min_length=1)
     chunk_count: int = Field(ge=0, default=0)

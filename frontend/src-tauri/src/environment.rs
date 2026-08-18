@@ -1,7 +1,5 @@
-//! Build environment: dev, staging, prod. The bundle identifier decides which is running, so it
-//! cannot drift; precedence is `MEETILY_ENV`, then identifier, then the debug/release default.
-//! A distinct identifier also gives each environment its own OS data directory, isolating the
-//! database, models and preferences for free. Recordings and keychain entries are suffixed below.
+//! Build environment: dev, staging, prod, decided by the bundle identifier so it cannot drift from
+//! the build. Precedence is `MEETILY_ENV`, then identifier, then the debug/release default.
 
 use std::fmt;
 use std::sync::OnceLock;
@@ -17,8 +15,7 @@ pub enum Environment {
     Prod,
 }
 
-/// Entra IDs are identifiers, not credentials -- a desktop app is a public client
-/// and cannot hold a secret -- so they are safe to commit.
+/// Identifiers, not credentials: a public client holds no secret, so these are safe to commit.
 #[derive(Debug, Clone, Copy)]
 pub struct EntraSettings {
     pub tenant_id: &'static str,
@@ -29,8 +26,7 @@ static DETECTED: OnceLock<Environment> = OnceLock::new();
 
 impl Environment {
     pub fn current() -> Self {
-        // Not cached: an explicit override should win even if something read the
-        // environment before startup detection ran.
+        // Not cached, so an override still wins after startup detection has run.
         if let Some(overridden) = runtime_override() {
             return overridden;
         }
@@ -104,8 +100,7 @@ impl Environment {
         }
     }
 
-    /// Recordings live outside the app-data directory, so they need an explicit
-    /// suffix. Prod keeps the original name so existing recordings still resolve.
+    /// Recordings live outside the app-data directory, so the suffix is explicit here.
     pub fn recordings_dir_name(&self) -> &'static str {
         match self {
             Self::Dev => "meetily-recordings-dev",
@@ -141,8 +136,7 @@ impl Environment {
         }
     }
 
-    /// Our backend's base URL, or `None` when this environment has none configured. Owned rather
-    /// than `&'static str` because `MEETILY_API_BASE_URL` can override it at runtime.
+    /// Owned rather than `&'static str` because `MEETILY_API_BASE_URL` overrides at runtime.
     pub fn api_base_url(&self) -> Option<String> {
         if let Ok(from_env) = std::env::var("MEETILY_API_BASE_URL") {
             let trimmed = from_env.trim();
@@ -181,8 +175,8 @@ fn build_profile_default() -> Environment {
     }
 }
 
-/// Tags the window title for non-prod builds. Done at runtime because `--config` merge-patches
-/// arrays wholesale, so an `app.windows` overlay would discard the base size and theme.
+/// Tags the window title for non-prod builds. At runtime because `--config` replaces arrays
+/// wholesale, so an `app.windows` overlay would discard the base size and theme.
 pub fn apply_window_title<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     use tauri::Manager;
 

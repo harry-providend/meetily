@@ -1,5 +1,4 @@
-"""Imports every entity so Base.metadata is complete. Alembic autogenerate and create_all()
-both read it, and an unimported entity module is silently omitted from migrations."""
+"""Imports every entity so Base.metadata is complete; an unimported one is omitted silently."""
 
 from app.db.base import Base
 from app.domain.meeting import MeetingEntity

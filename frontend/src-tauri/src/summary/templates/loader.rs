@@ -70,8 +70,7 @@ pub fn sanitize_template_id(raw: &str) -> Result<String, String> {
 pub async fn derive_unique_id(name: &str) -> Result<String, String> {
     let base = sanitize_template_id(name)?;
 
-    // The whole list once, rather than one existence check per candidate: over HTTP that loop
-    // would be a request per attempt.
+    // The whole list once: an existence check per candidate would be a request per attempt.
     let taken = list_template_ids().await?;
 
     let mut candidate = base.clone();

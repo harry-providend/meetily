@@ -45,8 +45,7 @@ class SqlAlchemyTranscriptRepository(TranscriptRepository):
     async def search_for_owner(
         self, owner_user_id: str, owner_tenant_id: str, query: str, limit: int
     ) -> list[TranscriptMatch]:
-        # The join to meetings is what enforces tenancy here, and it also supplies the title the
-        # caller needs to label each hit.
+        # The join to meetings enforces tenancy and supplies the title.
         stmt = (
             select(
                 MeetingEntity.id,

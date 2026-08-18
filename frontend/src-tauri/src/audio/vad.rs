@@ -182,11 +182,8 @@ impl ContinuousVadProcessor {
 
         // Force end any ongoing speech
         if self.in_speech && !self.current_speech.is_empty() {
-            // processed_samples and speech_start_sample always count 16kHz samples (post-resampling)
-            // Both counters are absolute from the start of the session, so this is the only place
-            // the force-end path needs. An inversion here means the two have drifted apart; it is
-            // reported rather than papered over, because a plausible-looking repair would place the
-            // segment at the wrong offset in the recording.
+            // Both counters are absolute 16kHz sample positions. An inversion means they have
+            // drifted; reported rather than repaired, since either one could be the wrong number.
             let start_ms = (self.speech_start_sample as f64 / 16000.0) * 1000.0;
             let end_ms = (self.processed_samples as f64 / 16000.0) * 1000.0;
             if end_ms < start_ms {
@@ -246,9 +243,8 @@ impl ContinuousVadProcessor {
                         self.last_logged_state = true;
                     }
                     self.in_speech = true;
-                    // Silero timestamps are absolute from the start of the session, the same basis
-                    // as processed_samples -- adding the two doubled the offset, which only showed
-                    // up on the force-end path below, the one place this field is read.
+                    // Silero timestamps are already absolute, so processed_samples must not be
+                    // added to them. Read only by the force-end path in flush().
                     self.speech_start_sample = timestamp_ms * 16000 / 1000;
                     self.current_speech.clear();
                 }
@@ -422,12 +418,8 @@ where
 
 #[cfg(test)]
 mod tests {
-    /// Traces a real recording through decode -> 16kHz mono -> VAD, printing every segment
-    /// boundary against the file's true length.
-    ///
-    /// This is the only thing that reproduces the force-end path: a synthetic tone does not, so
-    /// there is no self-contained regression test for the offset arithmetic above. Reach for this
-    /// when a segment lands outside its recording.
+    /// Prints every segment boundary against the file's true length. A synthetic tone will not
+    /// reach the force-end path, so this needs a real recording.
     ///
     ///   MEETILY_TRACE_AUDIO=/path/to/audio.mp4 cargo test vad_trace -- --ignored --nocapture
     #[test]

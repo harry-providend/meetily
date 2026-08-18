@@ -1,5 +1,5 @@
-//! Wire types mirroring the server's Pydantic schemas. Field names match the JSON exactly, so a
-//! rename on either side is a compile error here rather than a silently missing value.
+//! Wire types mirroring the server's schemas. Field names match the JSON exactly, so a rename on
+//! either side fails to compile rather than silently going missing.
 
 use serde::{Deserialize, Serialize};
 
@@ -175,8 +175,7 @@ pub struct SummaryTemplateUpsertRequest {
     pub sections_json: serde_json::Value,
 }
 
-/// A template as shipped in the app bundle. The app is the source of this content; the server
-/// only decides which rows it may overwrite.
+/// A template as shipped in the app bundle.
 #[derive(Debug, Serialize)]
 pub struct ShippedTemplate {
     pub id: String,

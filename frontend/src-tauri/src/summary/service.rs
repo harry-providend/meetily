@@ -139,8 +139,8 @@ fn build_summary_document(final_markdown: &str) -> serde_json::Value {
     serde_json::json!({ "markdown": strip_title_if_present(final_markdown) })
 }
 
-/// The reusable English pass, sent alongside the document rather than inside it: it describes the
-/// run that produced the summary, so archiving it with the document polluted version history.
+/// The reusable English pass, sent alongside the document rather than inside it so version history
+/// carries only the document.
 fn build_english_cache(
     english_markdown: &str,
     source: SummaryCacheSource,
@@ -154,9 +154,8 @@ fn build_english_cache(
     .unwrap_or(serde_json::Value::Null)
 }
 
-/// Reuses a stored English pass only when it came from exactly the same inputs and the user is
-/// switching to a different non-English target language. Any mismatch is a miss, never an error:
-/// a cache miss just means generating from the transcript again.
+/// Reuses a stored English pass only for identical inputs and a different non-English target.
+/// Any mismatch is a miss, never an error.
 fn extract_cached_english_markdown(
     cache_value: Option<&serde_json::Value>,
     expected_source: &SummaryCacheSource,
@@ -949,8 +948,7 @@ mod tests {
         let document = build_summary_document("# Translated Title\n## Decisions\nDone");
 
         assert_eq!(document["markdown"], "## Decisions\nDone");
-        // The cache must not ride along inside the document: this is what used to leak model
-        // fingerprints into every archived version.
+        // The cache must not ride along inside the document.
         assert!(document.get("english_cache").is_none());
         assert_eq!(document.as_object().map(|o| o.len()), Some(1));
     }
@@ -963,8 +961,7 @@ mod tests {
             Some("fr"),
         );
 
-        // The title is stripped for display but kept in the cache, so a later translation pass
-        // still has it.
+        // Stripped for display, kept in the cache for a later translation pass.
         assert_eq!(cache["markdown"], "# English Title\n## Decisions\nDone");
     }
 

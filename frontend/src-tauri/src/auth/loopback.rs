@@ -1,6 +1,5 @@
-//! Single-shot loopback listener for the Entra redirect. Hand-rolled rather than pulling in an
-//! HTTP server: it serves one request and stops. Port 0 because Entra ignores the port for
-//! `http://localhost`.
+//! Single-shot loopback listener for the Entra redirect: it serves one request and stops. Port 0
+//! because Entra ignores the port for `http://localhost`.
 
 use anyhow::{anyhow, bail, Context, Result};
 use std::io::{Read, Write};
@@ -48,13 +47,11 @@ impl LoopbackServer {
     }
 
     pub fn redirect_uri(&self) -> String {
-        // Entra ignores the port for http://localhost, so the registration only
-        // needs the bare host.
+        // Entra ignores the port, so the registration needs only the bare host.
         format!("http://localhost:{}", self.port)
     }
 
-    /// Blocks until the redirect arrives. Requests without `code`/`error` (favicon,
-    /// speculative connections) are answered and ignored.
+    /// Blocks until the redirect arrives. Requests without `code`/`error` are answered and ignored.
     pub fn wait_for_callback(self, expected_state: &str) -> Result<Callback> {
         self.wait_for_callback_with_timeout(expected_state, DEFAULT_TIMEOUT)
     }
@@ -163,8 +160,7 @@ fn request_target(request_line: &str) -> Option<String> {
     Some(target.to_string())
 }
 
-/// `Ok(None)` = not the callback, keep listening. `Err` = arrived but untrusted,
-/// which must abort the sign-in.
+/// `Ok(None)` = not the callback, keep listening. `Err` = untrusted, abort the sign-in.
 fn parse_callback(target: &str, expected_state: &str) -> Result<Option<Callback>> {
     // A relative target needs a base to parse against; the base is discarded.
     let url = Url::parse("http://localhost")
@@ -190,8 +186,7 @@ fn parse_callback(target: &str, expected_state: &str) -> Result<Option<Callback>
         return Ok(None);
     }
 
-    // Must match on success and failure alike, or we report on someone else's
-    // sign-in attempt.
+    // Checked on failure too, or we would report on someone else's sign-in.
     match state.as_deref() {
         Some(s) if s == expected_state => {}
         Some(_) => bail!("sign-in state did not match; ignoring this redirect"),
@@ -256,8 +251,7 @@ mod tests {
 
     #[test]
     fn rejects_mismatched_state() {
-        // The whole point of state: a redirect we did not initiate must not be
-        // accepted as our sign-in.
+        // A redirect we did not initiate must not be accepted as our sign-in.
         assert!(parse_callback("/?code=abc&state=wrong", "xyz").is_err());
     }
 

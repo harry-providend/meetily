@@ -380,6 +380,14 @@ $env:RUST_LOG="debug"; ./clean_run_windows.bat
 
 ## Repository-Specific Conventions
 
+- **Comments**: the code carries the explanation; comments are the exception, not the default. Match
+  the surrounding density, which is sparse, and write for a reader who knows the language and the
+  domain. Prefer a clearer name or a smaller function over a comment explaining a muddy one. When a
+  comment is warranted, one line is usually enough and two is a lot. Comment only what the code
+  cannot say itself: a non-obvious constraint, a rejected alternative, an external quirk. Never
+  restate the signature above it, narrate history ("this used to…"), cite values from a bug being
+  fixed, or record a correction you were given. If the comment is longer than the code it describes,
+  delete it.
 - **Logging Format**: Rust logs should include enough module context to diagnose app behavior
 - **Error Handling**: Rust uses `anyhow::Result`, frontend uses try-catch with user-friendly messages
 - **Naming**: Audio devices use "microphone" and "system" consistently (not "input"/"output")

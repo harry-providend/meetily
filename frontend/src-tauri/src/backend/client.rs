@@ -18,11 +18,9 @@ pub enum BackendError {
     NotConfigured,
     /// Not signed in, or the stored session could not be refreshed.
     NotAuthenticated(String),
-    /// The server rejected our token. Usually the access token's audience is wrong, which means
-    /// the app is not requesting the API scope (see `auth::config::api_scope`).
+    /// Usually a wrong audience, meaning the API scope was not requested.
     Unauthorized(String),
-    /// No such resource for this user. The server does not distinguish "absent" from "someone
-    /// else's", deliberately, so neither can we.
+    /// The server does not distinguish absent from someone else's, so neither can we.
     NotFound,
     /// Any other transport or server-side failure.
     Failed(String),
@@ -116,8 +114,7 @@ impl BackendClient {
             .await
     }
 
-    /// Unauthenticated liveness probe: skips the token so "unreachable" is distinguishable
-    /// from "up but rejected us".
+    /// Unauthenticated, so "unreachable" stays distinguishable from "up but rejected us".
     pub async fn health(&self) -> Result<(), BackendError> {
         let url = format!("{}/health", self.base_url);
         let response = self
@@ -159,8 +156,7 @@ impl BackendClient {
         self.dispatch(method, path, body, &[]).await.map(|_| ())
     }
 
-    /// Sends the request and classifies the status. Returns the URL alongside the response so
-    /// callers can name it in their own errors.
+    /// Returns the URL alongside the response so callers can name it in their errors.
     async fn dispatch<B: Serialize>(
         &self,
         method: reqwest::Method,

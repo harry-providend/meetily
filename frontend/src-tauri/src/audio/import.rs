@@ -692,8 +692,7 @@ async fn create_meeting_with_transcripts(
     // Generated here so a lost response makes a retry an update rather than a second meeting.
     let meeting_id = format!("meeting-{}", Uuid::new_v4());
 
-    // One request, so the meeting and its transcript land together or not at all -- the same
-    // guarantee the local transaction gave.
+    // One request, so the meeting and its transcript land together or not at all.
     let client = require_client().map_err(|e| anyhow!("{}", e))?;
     let created = MeetingsApi::new(&client)
         .create(

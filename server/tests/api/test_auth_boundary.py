@@ -1,5 +1,5 @@
-"""Every authenticated route must actually be authenticated. The sweep walks the OpenAPI
-schema, so a route added later without the auth dependency fails without a new test."""
+"""Every authenticated route must actually be authenticated. Walks the OpenAPI schema, so a new
+route is covered without a new test."""
 
 import pytest
 from fastapi import FastAPI

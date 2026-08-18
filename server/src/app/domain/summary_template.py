@@ -9,14 +9,8 @@ from app.db.base import Base
 
 
 class SummaryTemplateEntity(Base):
-    """Not meeting-scoped, but owned: each user gets their own copies, which is what the desktop
-    app's device-local table amounted to. Sharing a template across a tenant later means widening
-    the read filter, not changing this shape.
-
-    is_builtin marks a template shipped with the app; user_modified marks one the user has edited.
-    Together they drive seeding: startup re-applies shipped content to builtins, but never over an
-    edit, and clearing user_modified is what "reset to the shipped version" means.
-    """
+    """Owned per user, not meeting-scoped. is_builtin marks a template shipped with the app,
+    user_modified one the user has edited; together they decide what seeding may overwrite."""
 
     __tablename__ = "summary_templates"
     __table_args__ = (Index("ix_summary_templates_updated_at", "updated_at"),)

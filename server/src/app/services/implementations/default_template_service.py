@@ -17,12 +17,8 @@ from app.services.interfaces.template_service import TemplateService
 
 
 class DefaultTemplateService(TemplateService):
-    """Holds the two flags the desktop app's seeding depends on.
-
-    is_builtin says the app ships this template; user_modified says the user has edited it. Seeding
-    re-applies shipped content to builtins but never over an edit, so a user's changes survive
-    every update, and resetting is just clearing the flag and seeding again.
-    """
+    """Seeding re-applies shipped content to builtins but never over an edit, so resetting a
+    template is just clearing user_modified and seeding again."""
 
     def __init__(self, template_repository: SummaryTemplateRepository) -> None:
         self._template_repository = template_repository

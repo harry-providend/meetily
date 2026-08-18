@@ -1,5 +1,5 @@
-"""API-level wiring: real app, routers, DI graph, and Postgres. Only the token validator is
-substituted, so header parsing and the 401 paths stay under test -- just not the JWKS call."""
+"""API-level wiring: real app, routers, DI graph and Postgres, with only the token validator
+substituted."""
 
 import os
 from collections.abc import AsyncGenerator, Iterator

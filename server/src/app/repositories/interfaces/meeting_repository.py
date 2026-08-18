@@ -4,8 +4,7 @@ from app.domain.meeting import MeetingEntity
 
 
 class MeetingRepository(ABC):
-    """Owner is a required parameter on every method: there is deliberately no unfiltered
-    variant, so adding one would be a visible diff rather than a forgotten WHERE clause."""
+    """Owner is required on every method; there is deliberately no unfiltered variant."""
 
     @abstractmethod
     async def find_all_for_owner(

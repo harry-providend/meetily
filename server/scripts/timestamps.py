@@ -1,5 +1,4 @@
-"""Tolerant timestamp parsing for the SQLite backfill. The app writes the same column through
-aware chrono, naive NaiveDateTime, and to_rfc3339() paths, so one column holds several formats.
+"""Tolerant timestamp parsing for the SQLite backfill: one column holds several formats.
 Unparseable values are reported, never defaulted to now()."""
 
 from datetime import UTC, datetime

@@ -6,8 +6,7 @@ from app.domain.transcript import TranscriptEntity
 
 @dataclass(frozen=True)
 class TranscriptMatch:
-    """A search hit joined to its meeting. A projection, not an entity: search spans meetings, so
-    there is no single parent to read the title from."""
+    """A search hit joined to its meeting. A projection, not an entity."""
 
     meeting_id: str
     meeting_title: str
@@ -16,8 +15,7 @@ class TranscriptMatch:
 
 
 class TranscriptRepository(ABC):
-    """Scoped by meeting, not owner: the service layer authorizes the parent meeting first, so
-    ownership is already settled here. Duplicating owner columns onto children would drift."""
+    """Scoped by meeting, not owner: the service authorizes the parent meeting first."""
 
     @abstractmethod
     async def find_all_for_meeting(self, meeting_id: str) -> list[TranscriptEntity]: ...
@@ -34,8 +32,7 @@ class TranscriptRepository(ABC):
     async def search_for_owner(
         self, owner_user_id: str, owner_tenant_id: str, query: str, limit: int
     ) -> list[TranscriptMatch]:
-        """The one method here that takes an owner: search spans every meeting, so there is no
-        parent for the guard to authorize first."""
+        """Takes an owner because search spans every meeting, so there is no parent to authorize."""
 
     @abstractmethod
     async def save_all(self, transcripts: list[TranscriptEntity]) -> None: ...

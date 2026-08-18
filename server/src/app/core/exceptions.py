@@ -9,8 +9,7 @@ class AppException(Exception):
 
 
 class NotFoundException(AppException):
-    """Resource doesn't exist *for this owner*. Used identically for absent and
-    someone-else's, so the API can't leak other tenants' data."""
+    """Used identically for absent and someone-else's, so ownership never leaks."""
 
     status_code = 404
 

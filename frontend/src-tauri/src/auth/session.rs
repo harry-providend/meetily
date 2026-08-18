@@ -1,5 +1,5 @@
-//! Session state in the OS keychain. Tokens are bearer credentials, so they never go to a
-//! plaintext store and never cross into the webview -- the frontend gets identity only.
+//! Session state in the OS keychain. Tokens never reach a plaintext store or the webview; the
+//! frontend gets identity only.
 
 use anyhow::{Context, Result};
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -80,8 +80,7 @@ pub fn store(session: &AuthSession) -> Result<()> {
     Ok(())
 }
 
-/// Loads the stored session, if any. A corrupt entry is cleared and treated as
-/// signed out, so a bad write cannot lock the user out permanently.
+/// Loads the stored session. A corrupt entry is cleared and treated as signed out.
 pub fn load() -> Result<Option<AuthSession>> {
     let raw = match entry()?.get_password() {
         Ok(raw) => raw,
@@ -109,16 +108,14 @@ pub fn clear() -> Result<()> {
 }
 
 fn entry() -> Result<Entry> {
-    // Service name is per-environment, so a dev sign-in cannot overwrite the
-    // production session and signing out of one leaves the other alone.
+    // Per-environment, so a dev sign-in cannot overwrite the production session.
     let service = crate::environment::Environment::current().keychain_service();
     Entry::new(service, KEYCHAIN_ACCOUNT)
         .context("failed to open the OS keychain entry for sign-in")
 }
 
-/// Reads identity claims from an ID token. The signature is not verified: it came over TLS
-/// straight from Entra in exchange for our PKCE verifier, and the claims only drive display.
-/// JWKS verification belongs to the backend, which accepts tokens from untrusted callers.
+/// Reads identity claims from an ID token. The signature is not verified: it came over TLS from
+/// Entra and the claims only drive display. The backend does verify, against JWKS.
 pub fn account_from_id_token(id_token: &str) -> Result<Account> {
     let payload = id_token
         .split('.')
@@ -143,8 +140,7 @@ pub fn account_from_id_token(id_token: &str) -> Result<Account> {
     let claims: Claims =
         serde_json::from_slice(&decoded).context("ID token payload is not valid JSON")?;
 
-    // Prefer oid: stable per tenant, whereas sub is only stable per (user, application) and
-    // would break if a second app registration is ever added.
+    // oid is stable per tenant; sub is only stable per (user, application).
     let oid = claims
         .oid
         .or(claims.sub)
@@ -233,8 +229,7 @@ mod tests {
         let nearly_expired = AuthSession {
             access_token: "a".into(),
             refresh_token: None,
-            // Inside the skew window, so a refresh is due even though the token
-            // has not technically expired.
+            // Inside the skew window, so a refresh is due before actual expiry.
             expires_at: Utc::now() + Duration::seconds(REFRESH_SKEW / 2),
             account: account.clone(),
         };

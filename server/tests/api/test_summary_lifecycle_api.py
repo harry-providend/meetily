@@ -1,8 +1,5 @@
-"""The generation run: start -> complete | fail | cancel, and what each does to the stashed result.
-
-The rollback behaviour is the point of these tests. A failed or cancelled run must leave both the
-previous summary and the version history untouched, and only a successful one may add a version.
-"""
+"""The generation run, and what each ending does to the stashed result. A run that does not finish
+must leave the previous summary and the version history untouched."""
 
 from httpx import AsyncClient
 
@@ -144,11 +141,7 @@ async def test_another_user_cannot_drive_the_generation(client: AsyncClient) -> 
 async def test_the_english_cache_is_kept_out_of_the_document_and_out_of_history(
     client: AsyncClient,
 ) -> None:
-    """The generator's English pass is cache, not content.
-
-    It used to live inside the result JSON, so every archived version carried a stale copy along
-    with the model fingerprints that produced it.
-    """
+    """The generator's English pass is cache, not content, so it stays out of both."""
     cache = {"markdown": "english intermediate", "source": {"model_name": "gpt-5.6-luna"}}
 
     await client.post("/api/v1/meetings", headers=AUTH_A, json={"id": "m1", "title": "Talk"})

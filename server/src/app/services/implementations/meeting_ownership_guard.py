@@ -5,8 +5,7 @@ from app.repositories.interfaces.meeting_repository import MeetingRepository
 
 
 class MeetingOwnershipGuard:
-    """Resolves a meeting the caller owns, or raises. Every child aggregate needs this same
-    parent check, so it lives in one place and is composed into each service."""
+    """Resolves a meeting the caller owns, or raises. Composed into every child service."""
 
     def __init__(self, meeting_repository: MeetingRepository) -> None:
         self._meeting_repository = meeting_repository

@@ -274,8 +274,7 @@ pub async fn api_get_summary<R: Runtime>(
         });
     };
 
-    // Parsed regardless of status, so a summary restored after a failure or cancellation is
-    // still displayed.
+    // Parsed regardless of status, so a restored summary still displays.
     let data = process.result.as_deref().and_then(|raw| {
         match serde_json::from_str::<serde_json::Value>(raw) {
             Ok(parsed) => Some(parsed),
@@ -343,8 +342,7 @@ pub async fn api_process_transcript<R: Runtime>(
         if t.is_empty() { None } else { Some(t.to_string()) }
     });
 
-    // Starts the run, which stashes any existing summary so a failure can restore it. Every exit
-    // path from the background task below must complete, fail, or cancel it.
+    // Every exit path from the background task below must complete, fail, or cancel this run.
     {
         let client = require_client().map_err(|e| e.to_string())?;
         SummariesApi::new(&client)

@@ -1,9 +1,6 @@
 class MatchContextExtractor:
-    """Trims a transcript segment to a window around the first match, for search result rows.
-
-    Slices by character, not byte: the equivalent Rust helper indexes &str by byte offset, which
-    panics when a multi-byte character straddles the boundary.
-    """
+    """Trims a segment to a window around the first match. Slices by character, not byte, so
+    multi-byte text cannot split."""
 
     def __init__(self, window: int = 100, fallback_length: int = 200) -> None:
         self._window = window

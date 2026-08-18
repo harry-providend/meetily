@@ -1,5 +1,4 @@
-"""The DI graph. Every provider returns an interface type, so this is the only place
-interface-to-implementation binding happens."""
+"""The DI graph: the only place interfaces bind to implementations."""
 
 from typing import Annotated
 

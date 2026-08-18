@@ -15,9 +15,8 @@ class TranscriptEntity(Base):
     meeting_id: Mapped[str] = mapped_column(
         String, ForeignKey("meetings.id", ondelete="CASCADE"), nullable=False
     )
-    # Replaces SQLite's implicit rowid, which version.rs orders by; Postgres has no stable
-    # equivalent. Only meaningful within a meeting. Identity because autoincrement is honoured
-    # on primary keys only, BY DEFAULT so the backfill can insert explicit values.
+    # Segment order within a meeting. Identity rather than autoincrement, which SQLAlchemy honours
+    # on primary keys only; BY DEFAULT so a backfill can insert explicit values.
     sequence_number: Mapped[int] = mapped_column(BigInteger, Identity(), nullable=False)
     transcript: Mapped[str] = mapped_column(Text, nullable=False)
     # Opaque on purpose: mixed elapsed-time ("00:00:00") and wall-clock values, so casting

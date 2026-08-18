@@ -23,8 +23,7 @@ def get_session_factory() -> async_sessionmaker[AsyncSession]:
 
 
 async def get_db_session() -> AsyncGenerator[AsyncSession]:
-    """One session, one transaction, per request. Committing here rather than in repositories
-    means a request touching several of them lands completely or not at all."""
+    """One session, one transaction, per request; repositories only flush."""
     session_factory = get_session_factory()
     async with session_factory() as session:
         try:

@@ -20,8 +20,7 @@ use crate::{
 // Hardcoded server URL
 const APP_SERVER_URL: &str = "http://localhost:5167";
 
-/// Caps a transcript search. The old SQLite query was unbounded, which is fine against a local
-/// file and not fine against a shared server.
+/// Caps a transcript search, which was unbounded against local SQLite.
 const SEARCH_RESULT_LIMIT: i64 = 200;
 
 fn into_meeting_transcript(segment: TranscriptSegmentResponse) -> MeetingTranscript {
@@ -885,7 +884,6 @@ pub async fn api_get_meeting_metadata<R: Runtime>(
     }
 }
 /// Get paginated transcripts for a meeting
-/// Get paginated transcripts for a meeting
 #[tauri::command]
 pub async fn api_get_meeting_transcripts<R: Runtime>(
     _app: AppHandle<R>,
@@ -988,8 +986,7 @@ pub async fn api_save_transcript<R: Runtime>(
             )
         })?;
 
-    // Generated here rather than server-side so the caller knows the id even if the response is
-    // lost in transit, which makes a retry an update rather than a duplicate meeting.
+    // Client-side, so a lost response makes a retry an update rather than a second meeting.
     let meeting_id = format!("meeting-{}", Uuid::new_v4());
 
     let client = require_client().map_err(|e| e.to_string())?;

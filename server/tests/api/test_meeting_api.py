@@ -1,5 +1,4 @@
-"""Full-stack meeting flows: HTTP -> router -> service -> repository -> Postgres. Catches a
-mis-wired DI graph, an unserialisable DTO, or a wrong status code."""
+"""Full-stack meeting flows: HTTP -> router -> service -> repository -> Postgres."""
 
 from httpx import AsyncClient
 

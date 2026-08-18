@@ -5,8 +5,7 @@ use tauri::command;
 
 use crate::backend::client::{require_client, BackendError};
 
-/// Result of a connectivity check, structured so the UI can say *which* step failed rather than
-/// only "it didn't work".
+/// Structured so the UI can say which step failed.
 #[derive(Debug, Serialize)]
 pub struct BackendStatus {
     /// A backend URL is configured for this environment.
@@ -39,8 +38,7 @@ struct MeetingListResponse {
     total: i64,
 }
 
-/// Checks the app -> backend chain end to end and reports how far it got. An unreachable server
-/// and a rejected token need very different fixes, so they are reported separately.
+/// Reports how far the app -> backend chain got; the failure modes need different fixes.
 #[command]
 pub async fn backend_status() -> Result<BackendStatus, String> {
     let client = match require_client() {

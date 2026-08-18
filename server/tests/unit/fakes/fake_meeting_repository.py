@@ -3,8 +3,7 @@ from app.repositories.interfaces.meeting_repository import MeetingRepository
 
 
 class FakeMeetingRepository(MeetingRepository):
-    """In-memory MeetingRepository -- the point of the ABC: services testable with no database,
-    no FastAPI and no mocking framework, against a type-checked contract."""
+    """In-memory MeetingRepository, so services are testable with no database."""
 
     def __init__(self, seed: list[MeetingEntity] | None = None) -> None:
         self.meetings: list[MeetingEntity] = list(seed or [])

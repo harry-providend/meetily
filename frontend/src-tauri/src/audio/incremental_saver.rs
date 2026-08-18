@@ -23,9 +23,6 @@ pub struct IncrementalAudioSaver {
     checkpoints_dir: PathBuf,
     meeting_folder: PathBuf,
     sample_rate: u32,
-    /// Every sample handed to this saver. The recording's duration is this over the sample rate,
-    /// which is what a decoder reports for the finished file -- unlike a wall clock, which drifts
-    /// from the audio, or the last transcript segment, which stops at the last word spoken.
     samples_written: usize,
 }
 
@@ -117,7 +114,6 @@ impl IncrementalAudioSaver {
         Ok(())
     }
 
-    /// Length of the audio written so far, in seconds.
     pub fn duration_seconds(&self) -> f64 {
         self.samples_written as f64 / f64::from(self.sample_rate)
     }
@@ -439,8 +435,7 @@ mod tests {
         let mut saver = IncrementalAudioSaver::new(meeting_folder, 48000).unwrap();
         assert_eq!(saver.duration_seconds(), 0.0);
 
-        // 45.1s, deliberately not a multiple of the 30s checkpoint interval: the tail sitting in
-        // the buffer still counts, which is the case the old duration fallback got wrong.
+        // Not a multiple of the checkpoint interval: the tail left in the buffer still counts.
         for chunk_id in 0..451 {
             saver
                 .add_chunk(AudioChunk {

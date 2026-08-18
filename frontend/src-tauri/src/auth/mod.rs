@@ -1,5 +1,4 @@
-//! Microsoft Entra ID sign-in. Client-side only -- Entra authenticates the user
-//! directly with the app, so no backend of ours is involved yet.
+//! Microsoft Entra ID sign-in. The app obtains tokens directly and presents them to `/server`.
 
 pub mod commands;
 pub mod config;

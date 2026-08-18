@@ -424,8 +424,7 @@ async fn run_retranscription<R: Runtime>(
     // Create transcript segments with proper timestamps from VAD
     let segments = create_transcript_segments(&all_transcripts);
 
-    // One request, so the archive-then-replace stays atomic: the server snapshots the existing
-    // segments as a numbered version and swaps in the new set inside a single transaction.
+    // One request, so archive-then-replace stays in a single server transaction.
     let client = require_client().map_err(|e| anyhow!("{}", e))?;
     MeetingsApi::new(&client)
         .replace_transcript(

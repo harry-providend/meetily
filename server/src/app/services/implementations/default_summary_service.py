@@ -24,12 +24,8 @@ CANCELLED_MESSAGE = "Generation was cancelled by user"
 
 
 class DefaultSummaryService(SummaryService):
-    """Generation is a four-state run: start -> complete | fail | cancel.
-
-    start stashes the current result in result_backup. complete turns that stash into a numbered
-    version and clears it; fail and cancel restore from it. So a run that does not finish leaves
-    both the previous summary and the version history exactly as they were.
-    """
+    """Generation is a run: start -> complete | fail | cancel. start stashes the current result,
+    complete archives the stash as a version, and fail and cancel restore from it."""
 
     def __init__(
         self,

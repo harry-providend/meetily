@@ -420,13 +420,8 @@ impl RecordingSaver {
             metadata.status = "completed".to_string();
             metadata.completed_at = Some(chrono::Utc::now().to_rfc3339());
 
-            // The audio we actually wrote, first: samples over sample rate is the length a
-            // decoder will report for this file. The wall clock from RecordingState is a fallback,
-            // and it is usually absent here anyway -- the streams are stopped before this runs, so
-            // recording_start has already been cleared.
-            //
-            // Never the last transcript segment's end: that stops at the last word spoken and
-            // silently discards any trailing audio. It is what recorded a 45.1s file as 35.8s.
+            // The audio we wrote, not a wall clock: RecordingState has usually cleared
+            // recording_start by the time this runs.
             metadata.duration_seconds = written_duration.or(recording_duration);
 
             if let Err(e) = self.write_metadata(folder, &metadata) {

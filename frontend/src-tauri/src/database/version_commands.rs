@@ -187,8 +187,7 @@ mod tests {
 
     #[test]
     fn test_summary_json_falls_back_to_the_raw_json_for_an_unexpected_shape() {
-        // The server sends decoded JSON, so this can no longer be unparseable text -- only an
-        // object shape neither renderer recognises.
+        // The server sends decoded JSON, so only an unrecognised shape can reach this.
         let value = serde_json::json!(["not", "an", "object"]);
         assert_eq!(
             summary_value_to_markdown(&value),

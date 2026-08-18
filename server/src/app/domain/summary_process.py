@@ -9,13 +9,8 @@ from app.db.base import Base
 
 
 class SummaryProcessEntity(Base):
-    """1:1 with a meeting -- the PK *is* the meeting id.
-
-    result_backup is not history (summary_versions is): it is the rollback slot for one
-    in-flight regeneration. Starting a run copies result into it, a failed or cancelled run
-    restores from it, and only a successful run turns it into a numbered version. Dropping it
-    would make a failed regeneration destroy the summary it was replacing.
-    """
+    """1:1 with a meeting -- the PK *is* the meeting id. result_backup is the rollback slot for one
+    in-flight regeneration, not history; summary_versions is history."""
 
     __tablename__ = "summary_processes"
 

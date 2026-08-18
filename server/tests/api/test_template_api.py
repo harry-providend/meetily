@@ -1,8 +1,4 @@
-"""Templates, and the seeding rules that decide whose content wins.
-
-The rule that matters: seeding re-applies the app's shipped templates on every startup, but must
-never overwrite an edit the user made. Getting that wrong silently discards their work.
-"""
+"""Templates, and the rule that seeding must never overwrite a user's edit."""
 
 from httpx import AsyncClient
 

@@ -220,8 +220,7 @@ pub async fn api_reset_template<R: Runtime>(
         return Err("Only built-in templates can be reset to default".to_string());
     }
 
-    // Clearing the flag makes the row eligible for seeding again; the shipped content itself
-    // comes back from the app bundle in the seed that follows.
+    // Clearing the flag makes the row eligible for the seed that follows.
     api.reset(&id)
         .await
         .map_err(|e| format!("Failed to reset template: {}", e))?;

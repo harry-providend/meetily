@@ -20,10 +20,8 @@ class Settings(BaseSettings):
 
     @property
     def entra_accepted_issuers(self) -> list[str]:
-        """Both issuer spellings for this tenant, for the same reason as both audience spellings:
-        the registration's accessTokenAcceptedVersion decides which one a token carries. v2 tokens
-        come from login.microsoftonline.com/v2.0, v1 tokens from sts.windows.net. Both name this
-        one tenant, so a token from any other tenant still fails."""
+        """Both spellings for this tenant: accessTokenAcceptedVersion decides which a token
+        carries. Either way the tenant is pinned."""
         return [
             f"https://login.microsoftonline.com/{self.entra_tenant_id}/v2.0",
             f"https://sts.windows.net/{self.entra_tenant_id}/",

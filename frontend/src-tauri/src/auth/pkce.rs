@@ -1,5 +1,5 @@
-//! PKCE (RFC 7636). A desktop app holds no client secret, so an intercepted authorization code
-//! would otherwise suffice to obtain tokens: send a hash up front, prove possession on redeem.
+//! PKCE (RFC 7636). With no client secret, an intercepted authorization code would otherwise be
+//! enough to obtain tokens.
 
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
