@@ -3,8 +3,12 @@ from typing import Annotated
 from fastapi import APIRouter, Query
 
 from app.dependencies.providers import CurrentUserDep, TranscriptServiceDep
-from app.schemas.summary_dto import TranscriptVersionDetailResponse, TranscriptVersionResponse
-from app.schemas.transcript_dto import TranscriptReplaceRequest, TranscriptResponse
+from app.schemas.transcript_dto import (
+    TranscriptReplaceRequest,
+    TranscriptResponse,
+    TranscriptVersionDetailResponse,
+    TranscriptVersionResponse,
+)
 
 router = APIRouter(prefix="/api/v1/meetings/{meeting_id}", tags=["transcripts"])
 

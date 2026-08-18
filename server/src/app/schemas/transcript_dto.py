@@ -1,6 +1,7 @@
+from datetime import datetime
 from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 
 class TranscriptSegmentResponse(BaseModel):
@@ -64,3 +65,17 @@ class TranscriptSearchHit(BaseModel):
 
 class TranscriptSearchResponse(BaseModel):
     hits: list[TranscriptSearchHit]
+
+
+class TranscriptVersionResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    meeting_id: str
+    version: int
+    reason: str
+    segment_count: int
+    created_at: datetime
+
+
+class TranscriptVersionDetailResponse(TranscriptVersionResponse):
+    segments_json: list[JsonValue]

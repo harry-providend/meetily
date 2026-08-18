@@ -1,11 +1,12 @@
 from abc import ABC, abstractmethod
 
 from app.auth.current_user import AuthenticatedUser
-from app.schemas.summary_dto import TranscriptVersionDetailResponse, TranscriptVersionResponse
 from app.schemas.transcript_dto import (
     TranscriptReplaceRequest,
     TranscriptResponse,
     TranscriptSearchResponse,
+    TranscriptVersionDetailResponse,
+    TranscriptVersionResponse,
 )
 
 

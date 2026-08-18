@@ -52,17 +52,3 @@ class SummaryVersionResponse(BaseModel):
     reason: str
     result_json: dict[str, JsonValue]
     created_at: datetime
-
-
-class TranscriptVersionResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    meeting_id: str
-    version: int
-    reason: str
-    segment_count: int
-    created_at: datetime
-
-
-class TranscriptVersionDetailResponse(TranscriptVersionResponse):
-    segments_json: list[JsonValue]

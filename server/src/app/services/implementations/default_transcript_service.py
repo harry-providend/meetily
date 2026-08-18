@@ -8,7 +8,6 @@ from app.domain.transcript import TranscriptEntity
 from app.domain.transcript_version import TranscriptVersionEntity
 from app.repositories.interfaces.transcript_repository import TranscriptRepository
 from app.repositories.interfaces.transcript_version_repository import TranscriptVersionRepository
-from app.schemas.summary_dto import TranscriptVersionDetailResponse, TranscriptVersionResponse
 from app.schemas.transcript_dto import (
     TranscriptReplaceRequest,
     TranscriptResponse,
@@ -16,6 +15,8 @@ from app.schemas.transcript_dto import (
     TranscriptSearchResponse,
     TranscriptSegmentRequest,
     TranscriptSegmentResponse,
+    TranscriptVersionDetailResponse,
+    TranscriptVersionResponse,
 )
 from app.services.implementations.match_context_extractor import MatchContextExtractor
 from app.services.implementations.meeting_ownership_guard import MeetingOwnershipGuard

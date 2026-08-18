@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.domain.meeting import MeetingEntity
 from app.domain.transcript import TranscriptEntity
 from app.repositories.interfaces.transcript_repository import TranscriptMatch, TranscriptRepository
+from app.repositories.sqlalchemy import like
 from app.repositories.sqlalchemy.execution import execute_rowcount
 
 
@@ -57,7 +58,7 @@ class SqlAlchemyTranscriptRepository(TranscriptRepository):
             .where(
                 MeetingEntity.owner_user_id == owner_user_id,
                 MeetingEntity.owner_tenant_id == owner_tenant_id,
-                TranscriptEntity.transcript.ilike(f"%{query}%"),
+                TranscriptEntity.transcript.ilike(like.contains(query), escape=like.LIKE_ESCAPE),
             )
             .order_by(MeetingEntity.updated_at.desc(), TranscriptEntity.sequence_number)
             .limit(limit)
