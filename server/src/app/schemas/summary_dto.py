@@ -4,6 +4,9 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 
 class SummaryProcessResponse(BaseModel):
+    """result_backup is deliberately not exposed: it is server-side rollback state for one
+    in-flight run, and a client that could read or set it could corrupt the rollback."""
+
     model_config = ConfigDict(from_attributes=True)
 
     meeting_id: str
@@ -16,6 +19,16 @@ class SummaryProcessResponse(BaseModel):
     end_time: datetime | None
     created_at: datetime
     updated_at: datetime
+
+
+class SummaryCompleteRequest(BaseModel):
+    result: str = Field(min_length=1)
+    chunk_count: int = Field(ge=0, default=0)
+    processing_time: float = Field(ge=0.0, default=0.0)
+
+
+class SummaryFailRequest(BaseModel):
+    error: str = Field(min_length=1)
 
 
 class SummaryProcessUpsertRequest(BaseModel):
