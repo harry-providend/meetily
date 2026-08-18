@@ -1,0 +1,23 @@
+# Environments -- .env holds per-deployment config; only .env.example is committed
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# Cutover audit reports: row counts and column names, tied to a specific machine's data.
+# Keep these with the migration ticket, not in git.
+cutover-audit*.txt

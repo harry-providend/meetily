@@ -1,0 +1,36 @@
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: meetily
+      POSTGRES_PASSWORD: meetily
+      POSTGRES_DB: meetily
+    ports:
+      # 5433 on the host, not 5432: developers commonly already run a local Postgres on the
+      # default port, and binding it would either fail or shadow their own cluster.
+      - "5433:5432"
+    volumes:
+      # Postgres 18+ expects a single mount at /var/lib/postgresql and puts the cluster in a
+      # version-named subdirectory, so pg_upgrade --link can work without crossing a mount
+      # boundary. Mounting the old /var/lib/postgresql/data path makes the image refuse to start.
+      - meetily_postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U meetily"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  server:
+    build: .
+    environment:
+      DATABASE_URL: postgresql+asyncpg://meetily:meetily@postgres:5432/meetily
+      ENTRA_TENANT_ID: ${ENTRA_TENANT_ID:-}
+      ENTRA_API_APP_ID_URI: ${ENTRA_API_APP_ID_URI:-}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  meetily_postgres_data:
