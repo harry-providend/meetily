@@ -14,8 +14,12 @@ class TranscriptSegmentResponse(BaseModel):
 
 
 class TranscriptResponse(BaseModel):
+    """`total` is the segment count for the whole meeting, not this page, so a caller reading
+    incrementally knows when to stop."""
+
     meeting_id: str
     segments: list[TranscriptSegmentResponse]
+    total: int
 
 
 class TranscriptSegmentRequest(BaseModel):
@@ -34,3 +38,16 @@ class TranscriptReplaceRequest(BaseModel):
 
     reason: str = Field(min_length=1)
     segments: list[TranscriptSegmentRequest]
+
+
+class TranscriptSearchHit(BaseModel):
+    """One matching segment, with the surrounding text needed to render a result row."""
+
+    meeting_id: str
+    meeting_title: str
+    match_context: str
+    timestamp: str
+
+
+class TranscriptSearchResponse(BaseModel):
+    hits: list[TranscriptSearchHit]

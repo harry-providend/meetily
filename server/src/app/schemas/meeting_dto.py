@@ -2,6 +2,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.transcript_dto import TranscriptSegmentRequest
+
 
 class MeetingResponse(BaseModel):
     """Note the absence of owner_user_id/owner_tenant_id: ownership is an internal concern and
@@ -22,9 +24,13 @@ class MeetingListResponse(BaseModel):
 
 
 class MeetingCreateRequest(BaseModel):
+    """Segments may be supplied with the meeting so recording finalisation is one request, and
+    one transaction: a meeting is never persisted without the transcript it was created for."""
+
     id: str = Field(min_length=1)
     title: str = Field(min_length=1)
     folder_path: str | None = None
+    segments: list[TranscriptSegmentRequest] = Field(default_factory=list)
 
 
 class MeetingUpdateRequest(BaseModel):

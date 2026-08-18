@@ -2,14 +2,28 @@ from abc import ABC, abstractmethod
 
 from app.auth.current_user import AuthenticatedUser
 from app.schemas.summary_dto import TranscriptVersionDetailResponse, TranscriptVersionResponse
-from app.schemas.transcript_dto import TranscriptReplaceRequest, TranscriptResponse
+from app.schemas.transcript_dto import (
+    TranscriptReplaceRequest,
+    TranscriptResponse,
+    TranscriptSearchResponse,
+)
 
 
 class TranscriptService(ABC):
     @abstractmethod
     async def get_transcript(
-        self, current_user: AuthenticatedUser, meeting_id: str
-    ) -> TranscriptResponse: ...
+        self,
+        current_user: AuthenticatedUser,
+        meeting_id: str,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> TranscriptResponse:
+        """Whole transcript when limit is None, otherwise one page of it."""
+
+    @abstractmethod
+    async def search(
+        self, current_user: AuthenticatedUser, query: str, limit: int
+    ) -> TranscriptSearchResponse: ...
 
     @abstractmethod
     async def replace_transcript(

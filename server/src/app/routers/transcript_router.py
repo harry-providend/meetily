@@ -1,4 +1,6 @@
-from fastapi import APIRouter
+from typing import Annotated
+
+from fastapi import APIRouter, Query
 
 from app.dependencies.providers import CurrentUserDep, TranscriptServiceDep
 from app.schemas.summary_dto import TranscriptVersionDetailResponse, TranscriptVersionResponse
@@ -12,8 +14,11 @@ async def get_transcript(
     current_user: CurrentUserDep,
     transcript_service: TranscriptServiceDep,
     meeting_id: str,
+    limit: Annotated[int | None, Query(ge=1, le=1000)] = None,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> TranscriptResponse:
-    return await transcript_service.get_transcript(current_user, meeting_id)
+    """Omitting limit returns the whole transcript; `total` is the full count either way."""
+    return await transcript_service.get_transcript(current_user, meeting_id, limit, offset)
 
 
 @router.put("/transcript")

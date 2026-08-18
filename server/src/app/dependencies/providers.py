@@ -45,6 +45,7 @@ from app.services.implementations.default_summary_service import DefaultSummaryS
 from app.services.implementations.default_sync_service import DefaultSyncService
 from app.services.implementations.default_template_service import DefaultTemplateService
 from app.services.implementations.default_transcript_service import DefaultTranscriptService
+from app.services.implementations.match_context_extractor import MatchContextExtractor
 from app.services.implementations.meeting_ownership_guard import MeetingOwnershipGuard
 from app.services.interfaces.meeting_service import MeetingService
 from app.services.interfaces.notes_service import NotesService
@@ -109,9 +110,10 @@ OwnershipGuardDep = Annotated[MeetingOwnershipGuard, Depends(provide_ownership_g
 
 def provide_meeting_service(
     meeting_repository: MeetingRepositoryDep,
+    transcript_repository: Annotated[TranscriptRepository, Depends(provide_transcript_repository)],
     ownership_guard: OwnershipGuardDep,
 ) -> MeetingService:
-    return DefaultMeetingService(meeting_repository, ownership_guard)
+    return DefaultMeetingService(meeting_repository, transcript_repository, ownership_guard)
 
 
 def provide_transcript_service(
@@ -121,7 +123,9 @@ def provide_transcript_service(
     ],
     ownership_guard: OwnershipGuardDep,
 ) -> TranscriptService:
-    return DefaultTranscriptService(transcript_repository, version_repository, ownership_guard)
+    return DefaultTranscriptService(
+        transcript_repository, version_repository, ownership_guard, MatchContextExtractor()
+    )
 
 
 def provide_summary_service(

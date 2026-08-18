@@ -30,9 +30,13 @@ an `AuthenticatedUser` carrying `oid` and `tid`. Every service method takes that
 every `MeetingRepository` method takes `owner_user_id` and `owner_tenant_id` as **required**
 parameters — the interface has no unfiltered read at all.
 
-That is the structural fix for `frontend/src-tauri/src/database/repositories/meeting.rs:12`,
-which is a bare `SELECT * FROM meetings` with no ownership filter. Here, writing that query
-would mean adding a new abstract method — a visible diff in review, not a forgotten `WHERE`.
+That replaces the desktop app's `MeetingsRepository::get_meetings`, a bare
+`SELECT * FROM meetings` with no ownership filter (now deleted). Here, writing that query would
+mean adding a new abstract method — a visible diff in review, not a forgotten `WHERE`.
+
+The one exception is transcript search, which spans every meeting and so has no single parent to
+authorize: `TranscriptRepository.search_for_owner` takes the owner directly and enforces tenancy
+through its join to `meetings`.
 
 Child aggregates (transcripts, summaries, notes) are scoped by `meeting_id` only. Their services
 call `MeetingOwnershipGuard.require_owned_meeting` first, which raises `NotFoundException` —
@@ -48,6 +52,26 @@ call `MeetingOwnershipGuard.require_owned_meeting` first, which raises `NotFound
   per-user plaintext provider keys; they are not ported, and nothing here has an equivalent
   column. Provider config becomes admin policy.
 - **No `licensing` table.** Nothing in the current desktop codebase references it.
+
+## HTTP surface
+
+Everything under `/api/v1` requires `Authorization: Bearer <entra-access-token>`; `/health` does
+not. Absent and not-yours are both `404`.
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/api/v1/meetings` | `page`, `page_size` (max 200). Returns `items` + `total`. |
+| POST | `/api/v1/meetings` | Client supplies the id. Optional `segments` writes the transcript in the same transaction, so recording finalisation is one request. |
+| GET/PATCH/DELETE | `/api/v1/meetings/{id}` | PATCH renames. DELETE cascades to children and returns 204. |
+| GET | `/api/v1/meetings/{id}/transcript` | Whole transcript, or one page with `limit`/`offset`. `total` is always the full count. |
+| PUT | `/api/v1/meetings/{id}/transcript` | Replaces all segments, archiving the previous set as a numbered version. |
+| GET | `/api/v1/meetings/{id}/transcript/versions[/{version}]` | Version list, or one version with its segments. |
+| GET/PUT | `/api/v1/meetings/{id}/summary` | Upsert; overwriting archives the previous result. |
+| GET | `/api/v1/meetings/{id}/summary/versions[/{version}]` | As above, for summaries. |
+| GET/PUT | `/api/v1/meetings/{id}/notes` | |
+| GET | `/api/v1/transcripts/search` | `query` (required), `limit` (max 200). Cross-meeting, owner-scoped, returns match context. |
+| GET/PUT | `/api/v1/templates`, GET/DELETE `/api/v1/templates/{id}` | A NULL `owner_tenant_id` marks a builtin; builtins are not deletable. |
+| POST/GET | `/api/v1/sync/push`, `/api/v1/sync/pull` | Last-writer-wins, idempotent on `client_entry_id`. |
 
 ## Running locally
 

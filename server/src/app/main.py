@@ -9,6 +9,7 @@ from app.routers import (
     sync_router,
     template_router,
     transcript_router,
+    transcript_search_router,
 )
 
 
@@ -27,6 +28,7 @@ def create_app() -> FastAPI:
     app.include_router(health_router.router)
     app.include_router(meeting_router.router)
     app.include_router(transcript_router.router)
+    app.include_router(transcript_search_router.router)
     app.include_router(summary_router.router)
     app.include_router(notes_router.router)
     app.include_router(template_router.router)

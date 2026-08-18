@@ -9,6 +9,7 @@ from app.schemas.meeting_dto import MeetingCreateRequest, MeetingUpdateRequest
 from app.services.implementations.default_meeting_service import DefaultMeetingService
 from app.services.implementations.meeting_ownership_guard import MeetingOwnershipGuard
 from tests.unit.fakes.fake_meeting_repository import FakeMeetingRepository
+from tests.unit.fakes.fake_transcript_repository import FakeTranscriptRepository
 
 USER_A = AuthenticatedUser(oid="user-a", tenant_id="tenant-1", display_name="A", upn="a@x.test")
 USER_B = AuthenticatedUser(oid="user-b", tenant_id="tenant-1", display_name="B", upn="b@x.test")
@@ -32,7 +33,10 @@ def _meeting(meeting_id: str, owner: AuthenticatedUser, title: str = "m") -> Mee
 
 def _service(seed: list[MeetingEntity]) -> tuple[DefaultMeetingService, FakeMeetingRepository]:
     repository = FakeMeetingRepository(seed)
-    return DefaultMeetingService(repository, MeetingOwnershipGuard(repository)), repository
+    service = DefaultMeetingService(
+        repository, FakeTranscriptRepository(), MeetingOwnershipGuard(repository)
+    )
+    return service, repository
 
 
 async def test_list_meetings_returns_only_the_callers_meetings() -> None:

@@ -12,8 +12,11 @@ from app.schemas.summary_dto import TranscriptVersionDetailResponse, TranscriptV
 from app.schemas.transcript_dto import (
     TranscriptReplaceRequest,
     TranscriptResponse,
+    TranscriptSearchHit,
+    TranscriptSearchResponse,
     TranscriptSegmentResponse,
 )
+from app.services.implementations.match_context_extractor import MatchContextExtractor
 from app.services.implementations.meeting_ownership_guard import MeetingOwnershipGuard
 from app.services.interfaces.transcript_service import TranscriptService
 
@@ -24,19 +27,56 @@ class DefaultTranscriptService(TranscriptService):
         transcript_repository: TranscriptRepository,
         version_repository: TranscriptVersionRepository,
         ownership_guard: MeetingOwnershipGuard,
+        match_context_extractor: MatchContextExtractor,
     ) -> None:
         self._transcript_repository = transcript_repository
         self._version_repository = version_repository
         self._ownership_guard = ownership_guard
+        self._match_context_extractor = match_context_extractor
 
     async def get_transcript(
-        self, current_user: AuthenticatedUser, meeting_id: str
+        self,
+        current_user: AuthenticatedUser,
+        meeting_id: str,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> TranscriptResponse:
         await self._ownership_guard.require_owned_meeting(current_user, meeting_id)
-        segments = await self._transcript_repository.find_all_for_meeting(meeting_id)
+        if limit is None:
+            segments = await self._transcript_repository.find_all_for_meeting(meeting_id)
+            total = len(segments)
+        else:
+            segments = await self._transcript_repository.find_page_for_meeting(
+                meeting_id, limit=limit, offset=offset
+            )
+            total = await self._transcript_repository.count_for_meeting(meeting_id)
         return TranscriptResponse(
             meeting_id=meeting_id,
             segments=[TranscriptSegmentResponse.model_validate(s) for s in segments],
+            total=total,
+        )
+
+    async def search(
+        self, current_user: AuthenticatedUser, query: str, limit: int
+    ) -> TranscriptSearchResponse:
+        if not query.strip():
+            return TranscriptSearchResponse(hits=[])
+        matches = await self._transcript_repository.search_for_owner(
+            owner_user_id=current_user.oid,
+            owner_tenant_id=current_user.tenant_id,
+            query=query,
+            limit=limit,
+        )
+        return TranscriptSearchResponse(
+            hits=[
+                TranscriptSearchHit(
+                    meeting_id=match.meeting_id,
+                    meeting_title=match.meeting_title,
+                    match_context=self._match_context_extractor.extract(match.transcript, query),
+                    timestamp=match.timestamp,
+                )
+                for match in matches
+            ]
         )
 
     async def replace_transcript(

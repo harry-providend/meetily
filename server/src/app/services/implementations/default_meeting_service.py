@@ -3,7 +3,9 @@ from datetime import UTC, datetime
 from app.auth.current_user import AuthenticatedUser
 from app.core.exceptions import NotFoundException
 from app.domain.meeting import MeetingEntity
+from app.domain.transcript import TranscriptEntity
 from app.repositories.interfaces.meeting_repository import MeetingRepository
+from app.repositories.interfaces.transcript_repository import TranscriptRepository
 from app.schemas.meeting_dto import (
     MeetingCreateRequest,
     MeetingListResponse,
@@ -16,9 +18,13 @@ from app.services.interfaces.meeting_service import MeetingService
 
 class DefaultMeetingService(MeetingService):
     def __init__(
-        self, meeting_repository: MeetingRepository, ownership_guard: MeetingOwnershipGuard
+        self,
+        meeting_repository: MeetingRepository,
+        transcript_repository: TranscriptRepository,
+        ownership_guard: MeetingOwnershipGuard,
     ) -> None:
         self._meeting_repository = meeting_repository
+        self._transcript_repository = transcript_repository
         self._ownership_guard = ownership_guard
 
     async def list_meetings(
@@ -62,6 +68,24 @@ class DefaultMeetingService(MeetingService):
             updated_at=now,
         )
         saved = await self._meeting_repository.save(entity)
+
+        if request.segments:
+            await self._transcript_repository.save_all(
+                [
+                    TranscriptEntity(
+                        id=segment.id,
+                        meeting_id=saved.id,
+                        transcript=segment.transcript,
+                        timestamp=segment.timestamp,
+                        audio_start_time=segment.audio_start_time,
+                        audio_end_time=segment.audio_end_time,
+                        duration=segment.duration,
+                        speaker=segment.speaker,
+                    )
+                    for segment in request.segments
+                ]
+            )
+
         return MeetingResponse.model_validate(saved)
 
     async def update_meeting(
