@@ -93,6 +93,7 @@ pub struct TranscriptSearchResponse {
 pub struct SummaryProcessResponse {
     pub status: String,
     pub result: Option<String>,
+    pub english_cache: Option<serde_json::Value>,
     pub error: Option<String>,
     pub start_time: Option<String>,
     pub end_time: Option<String>,
@@ -101,6 +102,9 @@ pub struct SummaryProcessResponse {
 #[derive(Debug, Serialize)]
 pub struct SummaryCompleteRequest {
     pub result: String,
+    /// Sent beside the document, never inside it, so version history stays free of cache state.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub english_cache: Option<serde_json::Value>,
     pub chunk_count: i64,
     pub processing_time: f64,
 }

@@ -47,11 +47,13 @@ impl<'a> SummariesApi<'a> {
         &self,
         meeting_id: &str,
         result: String,
+        english_cache: Option<serde_json::Value>,
         chunk_count: i64,
         processing_time: f64,
     ) -> Result<SummaryProcessResponse, BackendError> {
         let request = SummaryCompleteRequest {
             result,
+            english_cache,
             chunk_count,
             processing_time,
         };

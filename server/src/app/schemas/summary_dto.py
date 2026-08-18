@@ -12,6 +12,7 @@ class SummaryProcessResponse(BaseModel):
     meeting_id: str
     status: str
     result: str | None
+    english_cache: dict[str, JsonValue] | None
     error: str | None
     chunk_count: int
     processing_time: float
@@ -22,9 +23,13 @@ class SummaryProcessResponse(BaseModel):
 
 
 class SummaryCompleteRequest(BaseModel):
+    """`result` is the summary document. `english_cache` is the generator's reusable English pass,
+    sent separately so it never ends up inside the document or in version history."""
+
     result: str = Field(min_length=1)
     chunk_count: int = Field(ge=0, default=0)
     processing_time: float = Field(ge=0.0, default=0.0)
+    english_cache: dict[str, JsonValue] | None = None
 
 
 class SummaryFailRequest(BaseModel):

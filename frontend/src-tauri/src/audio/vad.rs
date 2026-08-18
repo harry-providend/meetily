@@ -183,19 +183,17 @@ impl ContinuousVadProcessor {
         // Force end any ongoing speech
         if self.in_speech && !self.current_speech.is_empty() {
             // processed_samples and speech_start_sample always count 16kHz samples (post-resampling)
+            // Both counters are absolute from the start of the session, so this is the only place
+            // the force-end path needs. An inversion here means the two have drifted apart; it is
+            // reported rather than papered over, because a plausible-looking repair would place the
+            // segment at the wrong offset in the recording.
             let start_ms = (self.speech_start_sample as f64 / 16000.0) * 1000.0;
-            let mut end_ms = (self.processed_samples as f64 / 16000.0) * 1000.0;
-
-            // speech_start_sample and processed_samples are separate counters, and on this
-            // force-end path the latter can lag the former, which yields an inverted segment and
-            // a negative duration downstream. The held samples are the reliable length.
-            if end_ms <= start_ms {
-                let from_samples = (self.current_speech.len() as f64 / 16000.0) * 1000.0;
+            let end_ms = (self.processed_samples as f64 / 16000.0) * 1000.0;
+            if end_ms < start_ms {
                 warn!(
-                    "VAD flush: inverted segment (start={}ms, end={}ms); deriving end from {} held samples",
+                    "VAD flush: inverted segment (start={}ms, end={}ms, {} held samples)",
                     start_ms, end_ms, self.current_speech.len()
                 );
-                end_ms = start_ms + from_samples;
             }
 
             debug!("VAD flush: Force-ending speech - start={}ms, end={}ms, duration={}ms, samples={}",
@@ -248,8 +246,10 @@ impl ContinuousVadProcessor {
                         self.last_logged_state = true;
                     }
                     self.in_speech = true;
-                    // Use 16000 (VAD processing rate) since processed_samples counts 16kHz samples
-                    self.speech_start_sample = self.processed_samples + (timestamp_ms * 16000 / 1000);
+                    // Silero timestamps are absolute from the start of the session, the same basis
+                    // as processed_samples -- adding the two doubled the offset, which only showed
+                    // up on the force-end path below, the one place this field is read.
+                    self.speech_start_sample = timestamp_ms * 16000 / 1000;
                     self.current_speech.clear();
                 }
                 VadTransition::SpeechEnd { start_timestamp_ms, end_timestamp_ms, samples } => {
@@ -422,6 +422,63 @@ where
 
 #[cfg(test)]
 mod tests {
+    /// Traces a real recording through decode -> 16kHz mono -> VAD, printing every segment
+    /// boundary against the file's true length.
+    ///
+    /// This is the only thing that reproduces the force-end path: a synthetic tone does not, so
+    /// there is no self-contained regression test for the offset arithmetic above. Reach for this
+    /// when a segment lands outside its recording.
+    ///
+    ///   MEETILY_TRACE_AUDIO=/path/to/audio.mp4 cargo test vad_trace -- --ignored --nocapture
+    #[test]
+    #[ignore = "needs a real recording; set MEETILY_TRACE_AUDIO"]
+    fn vad_trace_real_recording() {
+        let Ok(path) = std::env::var("MEETILY_TRACE_AUDIO") else {
+            panic!("set MEETILY_TRACE_AUDIO to a recording path");
+        };
+
+        let decoded = crate::audio::decoder::decode_audio_file(std::path::Path::new(&path))
+            .expect("decode");
+        println!(
+            "decoded: {:.2}s, {} Hz, {} channels, {} raw samples",
+            decoded.duration_seconds,
+            decoded.sample_rate,
+            decoded.channels,
+            decoded.samples.len()
+        );
+
+        let file_seconds = decoded.duration_seconds;
+        let mono16k = decoded.to_whisper_format();
+        println!(
+            "after to_whisper_format: {} samples = {:.2}s at 16kHz",
+            mono16k.len(),
+            mono16k.len() as f64 / 16000.0
+        );
+
+        let segments = get_speech_chunks_with_progress(&mono16k, 2000, |_, _| true).expect("vad");
+        println!("\n{} segments:", segments.len());
+
+        let mut bad = 0;
+        for (i, s) in segments.iter().enumerate() {
+            let start = s.start_timestamp_ms / 1000.0;
+            let end = s.end_timestamp_ms / 1000.0;
+            let held = s.samples.len() as f64 / 16000.0;
+            let inverted = end < start;
+            let past_eof = start > file_seconds || end > file_seconds;
+            if inverted || past_eof {
+                bad += 1;
+            }
+            println!(
+                "  [{i:2}] {start:8.2}s -> {end:8.2}s  span={:7.2}s  held={held:6.2}s{}{}",
+                end - start,
+                if inverted { "  INVERTED" } else { "" },
+                if past_eof { "  PAST-EOF" } else { "" },
+            );
+        }
+
+        println!("\nfile is {file_seconds:.2}s; {bad} segment(s) inverted or past end of file");
+    }
+
     use super::*;
 
     /// Generate synthetic speech-like audio with alternating speech/silence

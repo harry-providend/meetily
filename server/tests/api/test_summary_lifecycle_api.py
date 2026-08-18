@@ -139,3 +139,62 @@ async def test_another_user_cannot_drive_the_generation(client: AsyncClient) -> 
     ]:
         response = await client.post(path, headers=AUTH_B, json=body)
         assert response.status_code == 404, path
+
+
+async def test_the_english_cache_is_kept_out_of_the_document_and_out_of_history(
+    client: AsyncClient,
+) -> None:
+    """The generator's English pass is cache, not content.
+
+    It used to live inside the result JSON, so every archived version carried a stale copy along
+    with the model fingerprints that produced it.
+    """
+    cache = {"markdown": "english intermediate", "source": {"model_name": "gpt-5.6-luna"}}
+
+    await client.post("/api/v1/meetings", headers=AUTH_A, json={"id": "m1", "title": "Talk"})
+    await client.post("/api/v1/meetings/m1/summary/generation", headers=AUTH_A)
+    await client.post(
+        "/api/v1/meetings/m1/summary/generation/complete",
+        headers=AUTH_A,
+        json={"result": FIRST, "english_cache": cache},
+    )
+
+    current = (await client.get("/api/v1/meetings/m1/summary", headers=AUTH_A)).json()
+    assert current["result"] == FIRST, "the document must not absorb the cache"
+    assert current["english_cache"] == cache
+
+    # Regenerate, so the first summary is archived.
+    await client.post("/api/v1/meetings/m1/summary/generation", headers=AUTH_A)
+    await client.post(
+        "/api/v1/meetings/m1/summary/generation/complete",
+        headers=AUTH_A,
+        json={"result": SECOND},
+    )
+
+    archived = (await client.get("/api/v1/meetings/m1/summary/versions/1", headers=AUTH_A)).json()
+    assert archived["result_json"] == {"markdown": "first summary"}
+    assert "english_cache" not in archived["result_json"]
+    # The new run supplied no cache, so the old one must not linger.
+    assert (await client.get("/api/v1/meetings/m1/summary", headers=AUTH_A)).json()[
+        "english_cache"
+    ] is None
+
+
+async def test_restoring_a_version_discards_the_cache(client: AsyncClient) -> None:
+    await client.post("/api/v1/meetings", headers=AUTH_A, json={"id": "m1", "title": "Talk"})
+    await client.post("/api/v1/meetings/m1/summary/generation", headers=AUTH_A)
+    await client.post(
+        "/api/v1/meetings/m1/summary/generation/complete",
+        headers=AUTH_A,
+        json={"result": FIRST},
+    )
+    await client.post("/api/v1/meetings/m1/summary/generation", headers=AUTH_A)
+    await client.post(
+        "/api/v1/meetings/m1/summary/generation/complete",
+        headers=AUTH_A,
+        json={"result": SECOND, "english_cache": {"markdown": "for the second run"}},
+    )
+
+    restored = await client.post("/api/v1/meetings/m1/summary/versions/1/restore", headers=AUTH_A)
+    # The cache described the run that produced the summary just displaced, not this one.
+    assert restored.json()["english_cache"] is None

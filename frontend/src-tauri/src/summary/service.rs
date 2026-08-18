@@ -55,8 +55,6 @@ fn strip_title_if_present(markdown: &str) -> String {
     }
 }
 
-const ENGLISH_CACHE_FIELD: &str = "english_cache";
-
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 struct SummaryCacheSource {
     transcript_fingerprint: String,
@@ -136,58 +134,53 @@ fn normalise_summary_language_for_cache(summary_language: Option<&str>) -> Optio
     language_name_from_code(summary_language?.trim()).map(str::to_string)
 }
 
-fn build_summary_result_json(
-    final_markdown: &str,
+/// The summary document, and nothing else.
+fn build_summary_document(final_markdown: &str) -> serde_json::Value {
+    serde_json::json!({ "markdown": strip_title_if_present(final_markdown) })
+}
+
+/// The reusable English pass, sent alongside the document rather than inside it: it describes the
+/// run that produced the summary, so archiving it with the document polluted version history.
+fn build_english_cache(
     english_markdown: &str,
     source: SummaryCacheSource,
     output_language: Option<&str>,
 ) -> serde_json::Value {
-    serde_json::json!({
-        "markdown": strip_title_if_present(final_markdown),
-        ENGLISH_CACHE_FIELD: EnglishSummaryCache {
-            markdown: english_markdown.to_string(),
-            source,
-            output_language: normalise_summary_language_for_cache(output_language),
-        },
+    serde_json::to_value(EnglishSummaryCache {
+        markdown: english_markdown.to_string(),
+        source,
+        output_language: normalise_summary_language_for_cache(output_language),
     })
+    .unwrap_or(serde_json::Value::Null)
 }
 
-/// Parses a `summary_processes.result` JSON blob and extracts a cached English
-/// summary only when it was produced from exactly the same source inputs and
-/// the user is switching to a different non-English target language.
+/// Reuses a stored English pass only when it came from exactly the same inputs and the user is
+/// switching to a different non-English target language. Any mismatch is a miss, never an error:
+/// a cache miss just means generating from the transcript again.
 fn extract_cached_english_markdown(
-    raw: &str,
+    cache_value: Option<&serde_json::Value>,
     expected_source: &SummaryCacheSource,
     requested_language: Option<&str>,
-) -> Result<Option<String>, serde_json::Error> {
+) -> Option<String> {
     let requested_language = match normalise_summary_language_for_cache(requested_language) {
         Some(language) if language != "English" => language,
-        _ => return Ok(None),
+        _ => return None,
     };
 
-    let value: serde_json::Value = serde_json::from_str(raw)?;
-    let Some(cache_value) = value.get(ENGLISH_CACHE_FIELD) else {
-        return Ok(None);
-    };
-
-    let cache: EnglishSummaryCache = match serde_json::from_value(cache_value.clone()) {
-        Ok(cache) => cache,
-        Err(_) => return Ok(None),
-    };
+    let cache: EnglishSummaryCache = serde_json::from_value(cache_value?.clone()).ok()?;
 
     if cache.source != *expected_source {
-        return Ok(None);
+        return None;
     }
 
     if cache.output_language.as_deref() == Some(requested_language.as_str()) {
-        return Ok(None);
+        return None;
     }
 
-    let markdown = cache.markdown.trim();
-    if markdown.is_empty() {
-        Ok(None)
+    if cache.markdown.trim().is_empty() {
+        None
     } else {
-        Ok(Some(cache.markdown))
+        Some(cache.markdown)
     }
 }
 
@@ -492,22 +485,11 @@ impl SummaryService {
                 None
             }
             Ok(None) => None,
-            Ok(Some(process)) => process.result.and_then(|raw| {
-                match extract_cached_english_markdown(
-                    &raw,
-                    &cache_source,
-                    summary_language.as_deref(),
-                ) {
-                    Ok(opt) => opt,
-                    Err(e) => {
-                        warn!(
-                            "Cached summary result for meeting_id={} is not valid JSON ({}); ignoring cache.",
-                            meeting_id, e
-                        );
-                        None
-                    }
-                }
-            }),
+            Ok(Some(process)) => extract_cached_english_markdown(
+                process.english_cache.as_ref(),
+                &cache_source,
+                summary_language.as_deref(),
+            ),
         };
 
         let client = reqwest::Client::new();
@@ -557,16 +539,22 @@ impl SummaryService {
                     }
                 }
 
-                let result_json = build_summary_result_json(
-                    &final_markdown,
+                let result_json = build_summary_document(&final_markdown);
+                let english_cache = build_english_cache(
                     &english_markdown,
                     cache_source,
                     summary_language.as_deref(),
                 );
 
                 // Completing the run is what archives the summary being replaced as a version.
-                if let Err(e) =
-                    Self::complete_process(&meeting_id, &result_json, num_chunks, duration).await
+                if let Err(e) = Self::complete_process(
+                    &meeting_id,
+                    &result_json,
+                    Some(english_cache),
+                    num_chunks,
+                    duration,
+                )
+                .await
                 {
                     error!("Failed to save completed process for {}: {}", meeting_id, e);
                 } else {
@@ -616,6 +604,7 @@ impl SummaryService {
     async fn complete_process(
         meeting_id: &str,
         result_json: &serde_json::Value,
+        english_cache: Option<serde_json::Value>,
         num_chunks: i64,
         duration: f64,
     ) -> Result<(), String> {
@@ -623,7 +612,7 @@ impl SummaryService {
             serde_json::to_string(result_json).map_err(|e| format!("serialise result: {e}"))?;
         let client = require_client().map_err(|e| e.to_string())?;
         SummariesApi::new(&client)
-            .complete(meeting_id, serialized, num_chunks, duration)
+            .complete(meeting_id, serialized, english_cache, num_chunks, duration)
             .await
             .map(|_| ())
             .map_err(|e| e.to_string())
@@ -768,15 +757,20 @@ mod tests {
     }
 
     #[test]
-    fn test_legacy_english_markdown_field_is_cache_miss() {
-        let raw = serde_json::json!({
-            "markdown": "translated",
-            "english_markdown": "# Old English\nBody"
-        })
-        .to_string();
+    fn test_an_unrecognised_cache_shape_is_a_miss() {
+        // Rows written before the cache had its own column, or by a future shape we cannot read.
+        let raw = serde_json::json!({ "english_markdown": "# Old English\nBody" });
 
         assert_eq!(
-            extract_cached_english_markdown(&raw, &sample_cache_source(), Some("de")).unwrap(),
+            extract_cached_english_markdown(Some(&raw), &sample_cache_source(), Some("de")),
+            None
+        );
+    }
+
+    #[test]
+    fn test_no_cache_at_all_is_a_miss() {
+        assert_eq!(
+            extract_cached_english_markdown(None, &sample_cache_source(), Some("de")),
             None
         );
     }
@@ -784,16 +778,10 @@ mod tests {
     #[test]
     fn test_matching_source_changed_translation_target_reuses_cache() {
         let source = sample_cache_source();
-        let raw = build_summary_result_json(
-            "# Reunion\n## Points\nBonjour",
-            "# Meeting\n## Points\nHello",
-            source.clone(),
-            Some("fr"),
-        )
-        .to_string();
+        let raw = build_english_cache("# Meeting\n## Points\nHello", source.clone(), Some("fr"));
 
         assert_eq!(
-            extract_cached_english_markdown(&raw, &source, Some("de")).unwrap(),
+            extract_cached_english_markdown(Some(&raw), &source, Some("de")),
             Some("# Meeting\n## Points\nHello".to_string())
         );
     }
@@ -801,16 +789,10 @@ mod tests {
     #[test]
     fn test_same_language_regeneration_rejects_cache() {
         let source = sample_cache_source();
-        let raw = build_summary_result_json(
-            "# Reunion\n## Points\nBonjour",
-            "# Meeting\n## Points\nHello",
-            source.clone(),
-            Some("fr"),
-        )
-        .to_string();
+        let raw = build_english_cache("# Meeting\n## Points\nHello", source.clone(), Some("fr"));
 
         assert_eq!(
-            extract_cached_english_markdown(&raw, &source, Some("fr")).unwrap(),
+            extract_cached_english_markdown(Some(&raw), &source, Some("fr")),
             None
         );
     }
@@ -819,13 +801,7 @@ mod tests {
     fn test_changed_summary_inputs_reject_cache() {
         let source = sample_cache_source();
         let template_fingerprint = source.template_fingerprint.clone();
-        let raw = build_summary_result_json(
-            "# Reunion\n## Points\nBonjour",
-            "# Meeting\n## Points\nHello",
-            source,
-            Some("fr"),
-        )
-        .to_string();
+        let raw = build_english_cache("# Meeting\n## Points\nHello", source, Some("fr"));
 
         let changed_sources = [
             build_summary_cache_source(
@@ -930,7 +906,7 @@ mod tests {
 
         for changed_source in changed_sources {
             assert_eq!(
-                extract_cached_english_markdown(&raw, &changed_source, Some("de")).unwrap(),
+                extract_cached_english_markdown(Some(&raw), &changed_source, Some("de")),
                 None
             );
         }
@@ -939,13 +915,7 @@ mod tests {
     #[test]
     fn test_changed_template_content_rejects_cache() {
         let source = sample_cache_source();
-        let raw = build_summary_result_json(
-            "# Reunion\n## Points\nBonjour",
-            "# Meeting\n## Points\nHello",
-            source.clone(),
-            Some("fr"),
-        )
-        .to_string();
+        let raw = build_english_cache("# Meeting\n## Points\nHello", source.clone(), Some("fr"));
 
         let changed_template = SummaryCacheSource {
             template_fingerprint: stable_text_fingerprint("changed template prompt"),
@@ -953,7 +923,7 @@ mod tests {
         };
 
         assert_eq!(
-            extract_cached_english_markdown(&raw, &changed_template, Some("de")).unwrap(),
+            extract_cached_english_markdown(Some(&raw), &changed_template, Some("de")),
             None
         );
     }
@@ -961,13 +931,7 @@ mod tests {
     #[test]
     fn test_changed_token_threshold_rejects_cache() {
         let source = sample_cache_source();
-        let raw = build_summary_result_json(
-            "# Reunion\n## Points\nBonjour",
-            "# Meeting\n## Points\nHello",
-            source.clone(),
-            Some("fr"),
-        )
-        .to_string();
+        let raw = build_english_cache("# Meeting\n## Points\nHello", source.clone(), Some("fr"));
 
         let changed_threshold = SummaryCacheSource {
             token_threshold: 8192,
@@ -975,30 +939,45 @@ mod tests {
         };
 
         assert_eq!(
-            extract_cached_english_markdown(&raw, &changed_threshold, Some("de")).unwrap(),
+            extract_cached_english_markdown(Some(&raw), &changed_threshold, Some("de")),
             None
         );
     }
 
     #[test]
-    fn test_result_json_strips_display_markdown_but_keeps_cache_title() {
-        let result = build_summary_result_json(
-            "# Translated Title\n## Decisions\nDone",
+    fn test_document_strips_the_display_title_and_carries_no_cache() {
+        let document = build_summary_document("# Translated Title\n## Decisions\nDone");
+
+        assert_eq!(document["markdown"], "## Decisions\nDone");
+        // The cache must not ride along inside the document: this is what used to leak model
+        // fingerprints into every archived version.
+        assert!(document.get("english_cache").is_none());
+        assert_eq!(document.as_object().map(|o| o.len()), Some(1));
+    }
+
+    #[test]
+    fn test_cache_keeps_the_english_title_the_document_drops() {
+        let cache = build_english_cache(
             "# English Title\n## Decisions\nDone",
             sample_cache_source(),
             Some("fr"),
         );
 
-        assert_eq!(result["markdown"], "## Decisions\nDone");
-        assert_eq!(
-            result["english_cache"]["markdown"],
-            "# English Title\n## Decisions\nDone"
-        );
+        // The title is stripped for display but kept in the cache, so a later translation pass
+        // still has it.
+        assert_eq!(cache["markdown"], "# English Title\n## Decisions\nDone");
     }
 
     #[test]
-    fn test_extract_cached_english_from_malformed_json_errors() {
-        let raw = r#"{ not valid json"#;
-        assert!(extract_cached_english_markdown(raw, &sample_cache_source(), Some("de")).is_err());
+    fn test_a_null_cache_column_is_a_miss() {
+        // The column is JSONB, so the server can only ever hand us valid JSON or nothing.
+        assert_eq!(
+            extract_cached_english_markdown(
+                Some(&serde_json::Value::Null),
+                &sample_cache_source(),
+                Some("de")
+            ),
+            None
+        );
     }
 }

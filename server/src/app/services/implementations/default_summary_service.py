@@ -94,6 +94,7 @@ class DefaultSummaryService(SummaryService):
 
         entity.status = "completed"
         entity.result = request.result
+        entity.english_cache = request.english_cache
         entity.error = None
         entity.chunk_count = request.chunk_count
         entity.processing_time = request.processing_time
@@ -189,9 +190,11 @@ class DefaultSummaryService(SummaryService):
         entity.status = "completed"
         entity.error = None
         entity.updated_at = datetime.now(UTC)
-        # A restore is not a generation run, so any in-flight rollback state is now meaningless.
+        # A restore is not a generation run, so in-flight state is meaningless -- and the cache
+        # belonged to whichever run produced the summary being displaced, not this one.
         entity.result_backup = None
         entity.result_backup_timestamp = None
+        entity.english_cache = None
 
         return SummaryProcessResponse.model_validate(
             await self._summary_process_repository.save(entity)
