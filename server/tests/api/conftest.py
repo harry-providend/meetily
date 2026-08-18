@@ -16,6 +16,7 @@ from app.db.session import get_db_session
 from app.dependencies.providers import provide_token_validator
 from app.domain.registry import Base
 from app.main import create_app
+from tests.database_guard import require_disposable_database
 
 ENV_URL = "MEETILY_TEST_DATABASE_URL"
 
@@ -38,7 +39,7 @@ class FakeTokenValidator(TokenValidator):
 def database_url() -> Iterator[str]:
     preset = os.environ.get(ENV_URL)
     if preset:
-        yield preset
+        yield require_disposable_database(preset)
         return
     try:
         from testcontainers.postgres import PostgresContainer

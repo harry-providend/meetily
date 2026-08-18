@@ -89,6 +89,17 @@ uvicorn app.main:create_app --factory --reload --port 8000
 
 ## Tests
 
+The API and integration suites `drop_all`/`create_all`, so they refuse to run against a database
+whose name does not end in `_test`:
+
+```bash
+createdb -h localhost -p 5433 -U meetily meetily_test
+MEETILY_TEST_DATABASE_URL=postgresql+asyncpg://meetily:meetily@localhost:5433/meetily_test uv run pytest
+```
+
+Omit the variable entirely to use a throwaway testcontainer instead (needs Docker running).
+
+
 Three layers, each catching what the layer below cannot:
 
 | Layer | Location | What it covers | Needs Postgres |

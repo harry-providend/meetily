@@ -5,6 +5,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.domain.registry import Base
+from tests.database_guard import require_disposable_database
 
 # Real Postgres, never SQLite: JSONB, TIMESTAMPTZ, IDENTITY and CASCADE are what these tests
 # check. Set MEETILY_TEST_DATABASE_URL to reuse a running instance, else testcontainers.
@@ -15,7 +16,7 @@ ENV_URL = "MEETILY_TEST_DATABASE_URL"
 def database_url() -> Iterator[str]:
     preset = os.environ.get(ENV_URL)
     if preset:
-        yield preset
+        yield require_disposable_database(preset)
         return
 
     try:
