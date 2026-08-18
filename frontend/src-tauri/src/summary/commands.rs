@@ -1,7 +1,6 @@
-use crate::database::repositories::{
-    meeting::MeetingsRepository,
-    summary::SummaryProcessesRepository, transcript_chunk::TranscriptChunksRepository,
-};
+use crate::backend::client::{require_client, BackendError};
+use crate::backend::meetings::MeetingsApi;
+use crate::backend::summaries::SummariesApi;
 use crate::state::AppState;
 use crate::summary::metadata::{
     read_detected_summary_language_from_metadata, read_summary_language_from_metadata,
@@ -75,7 +74,7 @@ enum MeetingFolderResolution {
 #[tauri::command]
 pub async fn api_save_meeting_summary<R: Runtime>(
     _app: AppHandle<R>,
-    state: tauri::State<'_, AppState>,
+    _state: tauri::State<'_, AppState>,
     meeting_id: String,
     summary: serde_json::Value,
     _auth_token: Option<String>,
@@ -84,21 +83,23 @@ pub async fn api_save_meeting_summary<R: Runtime>(
         "api_save_meeting_summary (native) called for meeting_id: {}",
         meeting_id
     );
-    let pool = state.db_manager.pool();
+    let serialized = serde_json::to_string(&summary)
+        .map_err(|e| format!("Failed to serialise the summary: {}", e))?;
 
-    match SummaryProcessesRepository::update_meeting_summary(pool, &meeting_id, &summary).await {
-        Ok(true) => {
+    let client = require_client().map_err(|e| e.to_string())?;
+    match SummariesApi::new(&client)
+        .save_directly(&meeting_id, serialized)
+        .await
+    {
+        Ok(_) => {
             log_info!("Summary saved successfully for meeting_id: {}", meeting_id);
             Ok(serde_json::json!({
                 "message": "Meeting summary saved successfully"
             }))
         }
-        Ok(false) => {
-            log_warn!(
-                "Meeting not found or invalid JSON for meeting_id: {}",
-                meeting_id
-            );
-            Err("Meeting not found or can't convert the json".into())
+        Err(BackendError::NotFound) => {
+            log_warn!("Meeting not found for meeting_id: {}", meeting_id);
+            Err("Meeting not found".into())
         }
         Err(e) => {
             log_error!("Failed to save meeting summary for {}: {}", meeting_id, e);
@@ -111,7 +112,7 @@ pub async fn api_save_meeting_summary<R: Runtime>(
 #[tauri::command]
 pub async fn api_get_meeting_summary_language<R: Runtime>(
     _app: AppHandle<R>,
-    state: tauri::State<'_, AppState>,
+    _state: tauri::State<'_, AppState>,
     meeting_id: String,
 ) -> Result<MeetingSummaryLanguagePreference, String> {
     log_info!(
@@ -119,7 +120,7 @@ pub async fn api_get_meeting_summary_language<R: Runtime>(
         meeting_id
     );
 
-    match resolve_meeting_folder(state.db_manager.pool(), &meeting_id).await? {
+    match resolve_meeting_folder(&meeting_id).await? {
         MeetingFolderResolution::Folder(folder) => read_summary_language_from_metadata(&folder)
             .map(MeetingSummaryLanguagePreference::metadata)
             .map_err(|e| e.to_string()),
@@ -131,7 +132,7 @@ pub async fn api_get_meeting_summary_language<R: Runtime>(
 #[tauri::command]
 pub async fn api_save_meeting_summary_language<R: Runtime>(
     _app: AppHandle<R>,
-    state: tauri::State<'_, AppState>,
+    _state: tauri::State<'_, AppState>,
     meeting_id: String,
     summary_language: Option<String>,
 ) -> Result<MeetingSummaryLanguagePreference, String> {
@@ -141,7 +142,7 @@ pub async fn api_save_meeting_summary_language<R: Runtime>(
         summary_language
     );
 
-    match resolve_meeting_folder(state.db_manager.pool(), &meeting_id).await? {
+    match resolve_meeting_folder(&meeting_id).await? {
         MeetingFolderResolution::Folder(folder) => {
             write_summary_language_to_metadata(&folder, summary_language.as_deref())
                 .map_err(|e| e.to_string())?;
@@ -157,7 +158,7 @@ pub async fn api_save_meeting_summary_language<R: Runtime>(
 #[tauri::command]
 pub async fn api_get_meeting_detected_summary_language<R: Runtime>(
     _app: AppHandle<R>,
-    state: tauri::State<'_, AppState>,
+    _state: tauri::State<'_, AppState>,
     meeting_id: String,
 ) -> Result<MeetingSummaryLanguagePreference, String> {
     log_info!(
@@ -165,7 +166,7 @@ pub async fn api_get_meeting_detected_summary_language<R: Runtime>(
         meeting_id
     );
 
-    match resolve_meeting_folder(state.db_manager.pool(), &meeting_id).await? {
+    match resolve_meeting_folder(&meeting_id).await? {
         MeetingFolderResolution::Folder(folder) => read_detected_summary_language_from_metadata(&folder)
             .map(MeetingSummaryLanguagePreference::metadata)
             .map_err(|e| e.to_string()),
@@ -177,7 +178,7 @@ pub async fn api_get_meeting_detected_summary_language<R: Runtime>(
 #[tauri::command]
 pub async fn api_save_meeting_detected_summary_language<R: Runtime>(
     _app: AppHandle<R>,
-    state: tauri::State<'_, AppState>,
+    _state: tauri::State<'_, AppState>,
     meeting_id: String,
     detected_summary_language: Option<String>,
 ) -> Result<MeetingSummaryLanguagePreference, String> {
@@ -187,7 +188,7 @@ pub async fn api_save_meeting_detected_summary_language<R: Runtime>(
         detected_summary_language
     );
 
-    match resolve_meeting_folder(state.db_manager.pool(), &meeting_id).await? {
+    match resolve_meeting_folder(&meeting_id).await? {
         MeetingFolderResolution::Folder(folder) => {
             write_detected_summary_language_to_metadata(&folder, detected_summary_language.as_deref())
                 .map_err(|e| e.to_string())?;
@@ -207,14 +208,15 @@ pub async fn api_detect_transcript_summary_language(
     Ok(detect_summary_language(&transcript_texts))
 }
 
-async fn resolve_meeting_folder(
-    pool: &sqlx::SqlitePool,
-    meeting_id: &str,
-) -> Result<MeetingFolderResolution, String> {
-    let meeting = MeetingsRepository::get_meeting_metadata(pool, meeting_id)
+async fn resolve_meeting_folder(meeting_id: &str) -> Result<MeetingFolderResolution, String> {
+    let client = require_client().map_err(|e| e.to_string())?;
+    let meeting = MeetingsApi::new(&client)
+        .get(meeting_id)
         .await
-        .map_err(|e| format!("Failed to load meeting metadata: {}", e))?
-        .ok_or_else(|| format!("Meeting not found: {}", meeting_id))?;
+        .map_err(|e| match e {
+            BackendError::NotFound => format!("Meeting not found: {}", meeting_id),
+            other => format!("Failed to load meeting metadata: {}", other),
+        })?;
 
     let Some(folder_path) = meeting.folder_path.filter(|p| !p.trim().is_empty()) else {
         return Ok(MeetingFolderResolution::NoFolder);
@@ -229,7 +231,7 @@ async fn resolve_meeting_folder(
 #[tauri::command]
 pub async fn api_get_summary<R: Runtime>(
     _app: AppHandle<R>,
-    state: tauri::State<'_, AppState>,
+    _state: tauri::State<'_, AppState>,
     meeting_id: String,
     _auth_token: Option<String>,
 ) -> Result<SummaryResponse, String> {
@@ -237,86 +239,71 @@ pub async fn api_get_summary<R: Runtime>(
         "api_get_summary (native) called for meeting_id: {}",
         meeting_id
     );
-    let pool = state.db_manager.pool();
+    let client = require_client().map_err(|e| e.to_string())?;
+    let api = SummariesApi::new(&client);
+    let meetings = MeetingsApi::new(&client);
 
-    match SummaryProcessesRepository::get_summary_data_for_meeting(pool, &meeting_id).await {
-        Ok(Some(process)) => {
-            let status = process.status.to_lowercase();
-            let error = process.error;
-
-            // Parse result data if it exists (regardless of status)
-            // This allows displaying restored summaries after cancellation or failure
-            let data = if let Some(result_str) = process.result {
-                match serde_json::from_str::<serde_json::Value>(&result_str) {
-                    Ok(parsed) => Some(parsed),
-                    Err(e) => {
-                        log_error!("Failed to parse summary result JSON: {}", e);
-                        None
-                    }
-                }
-            } else {
-                None
-            };
-
-            // Fetch meeting title from database
-            let meeting_name = match MeetingsRepository::get_meeting(pool, &meeting_id).await {
-                Ok(Some(meeting_details)) => {
-                    log_info!("Fetched meeting title: {}", &meeting_details.title);
-                    Some(meeting_details.title)
-                }
-                Ok(None) => {
-                    log_warn!("Meeting not found for meeting_id: {}", meeting_id);
-                    None
-                }
-                Err(e) => {
-                    log_error!("Failed to fetch meeting title: {}", e);
-                    None
-                }
-            };
-
-            let response = SummaryResponse {
-                status: status.clone(),
-                meeting_name,
-                meeting_id: meeting_id.clone(),
-                start: process.start_time.map(|t| t.to_rfc3339()),
-                end: process.end_time.map(|t| t.to_rfc3339()),
-                data,
-                error,
-            };
-
-            log_info!(
-                "Summary status for {}: {}, has_data: {}, meeting_name: {:?}",
-                meeting_id,
-                status,
-                response.data.is_some(),
-                response.meeting_name
-            );
-            Ok(response)
-        }
-        Ok(None) => {
-            log_info!("No summary process found for meeting_id: {}", meeting_id);
-
-            // Still fetch meeting title for idle state
-            let meeting_name = match MeetingsRepository::get_meeting(pool, &meeting_id).await {
-                Ok(Some(meeting_details)) => Some(meeting_details.title),
-                _ => None,
-            };
-
-            Ok(SummaryResponse {
-                status: "idle".to_string(),
-                meeting_name,
-                meeting_id,
-                start: None,
-                end: None,
-                data: None,
-                error: None,
-            })
+    // Title comes from the meeting, status from the process row; either can be absent.
+    let meeting_name = match meetings.get(&meeting_id).await {
+        Ok(meeting) => Some(meeting.title),
+        Err(BackendError::NotFound) => {
+            log_warn!("Meeting not found for meeting_id: {}", meeting_id);
+            None
         }
         Err(e) => {
-            log_error!("Error retrieving summary for {}: {}", meeting_id, e);
-            Err(format!("Failed to retrieve summary: {}", e))
+            log_error!("Failed to fetch meeting title: {}", e);
+            None
         }
-    }
+    };
+
+    let process = api
+        .get(&meeting_id)
+        .await
+        .map_err(|e| format!("Failed to retrieve summary: {}", e))?;
+
+    let Some(process) = process else {
+        log_info!("No summary process found for meeting_id: {}", meeting_id);
+        return Ok(SummaryResponse {
+            status: "idle".to_string(),
+            meeting_name,
+            meeting_id,
+            start: None,
+            end: None,
+            data: None,
+            error: None,
+        });
+    };
+
+    // Parsed regardless of status, so a summary restored after a failure or cancellation is
+    // still displayed.
+    let data = process.result.as_deref().and_then(|raw| {
+        match serde_json::from_str::<serde_json::Value>(raw) {
+            Ok(parsed) => Some(parsed),
+            Err(e) => {
+                log_error!("Failed to parse summary result JSON: {}", e);
+                None
+            }
+        }
+    });
+
+    let status = process.status.to_lowercase();
+    log_info!(
+        "Summary status for {}: {}, has_data: {}, meeting_name: {:?}",
+        meeting_id,
+        status,
+        data.is_some(),
+        meeting_name
+    );
+
+    Ok(SummaryResponse {
+        status,
+        meeting_name,
+        meeting_id,
+        start: process.start_time,
+        end: process.end_time,
+        data,
+        error: process.error,
+    })
 }
 
 /// Processes transcript and generates summary (Native SQLx implementation)
@@ -356,30 +343,17 @@ pub async fn api_process_transcript<R: Runtime>(
         if t.is_empty() { None } else { Some(t.to_string()) }
     });
 
-    // Create or reset the process entry in the database
-    SummaryProcessesRepository::create_or_reset_process(&pool, &m_id)
-        .await
-        .map_err(|e| format!("Failed to initialize process: {}", e))?;
+    // Starts the run, which stashes any existing summary so a failure can restore it. Every exit
+    // path from the background task below must complete, fail, or cancel it.
+    {
+        let client = require_client().map_err(|e| e.to_string())?;
+        SummariesApi::new(&client)
+            .start(&m_id)
+            .await
+            .map_err(|e| format!("Failed to initialize process: {}", e))?;
+    }
 
     log_info!("✓ Summary process initialized for meeting_id: {}", &m_id);
-
-    // Save transcript chunks data (matching Python backend behavior)
-    let chunk_size = _chunk_size.unwrap_or(40000);
-    let overlap = _overlap.unwrap_or(1000);
-
-    TranscriptChunksRepository::save_transcript_data(
-        &pool,
-        &m_id,
-        &text,
-        &model,
-        &model_name,
-        chunk_size,
-        overlap,
-    )
-    .await
-    .map_err(|e| format!("Failed to save transcript data: {}", e))?;
-
-    log_info!("✓ Transcript chunks saved for meeting_id: {}", &m_id);
 
     // Spawn background task for actual processing
     let meeting_id_clone = m_id.clone();
@@ -413,7 +387,7 @@ pub async fn api_process_transcript<R: Runtime>(
 #[tauri::command]
 pub async fn api_cancel_summary<R: Runtime>(
     _app: AppHandle<R>,
-    state: tauri::State<'_, AppState>,
+    _state: tauri::State<'_, AppState>,
     meeting_id: String,
 ) -> Result<serde_json::Value, String> {
     log_info!("api_cancel_summary called for meeting_id: {}", meeting_id);
@@ -422,10 +396,13 @@ pub async fn api_cancel_summary<R: Runtime>(
     let cancelled = SummaryService::cancel_summary(&meeting_id);
 
     if cancelled {
-        // Update database status to cancelled
-        let pool = state.db_manager.pool();
-        if let Err(e) = SummaryProcessesRepository::update_process_cancelled(pool, &meeting_id).await {
-            log_error!("Failed to update DB status to cancelled for {}: {}", meeting_id, e);
+        let client = require_client().map_err(|e| e.to_string())?;
+        if let Err(e) = SummariesApi::new(&client).cancel(&meeting_id).await {
+            log_error!(
+                "Failed to update status to cancelled for {}: {}",
+                meeting_id,
+                e
+            );
             return Err(format!("Failed to update cancellation status: {}", e));
         }
 

@@ -88,3 +88,30 @@ pub struct TranscriptSearchHit {
 pub struct TranscriptSearchResponse {
     pub hits: Vec<TranscriptSearchHit>,
 }
+
+#[derive(Debug, Deserialize)]
+pub struct SummaryProcessResponse {
+    pub status: String,
+    pub result: Option<String>,
+    pub error: Option<String>,
+    pub start_time: Option<String>,
+    pub end_time: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SummaryCompleteRequest {
+    pub result: String,
+    pub chunk_count: i64,
+    pub processing_time: f64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SummaryFailRequest {
+    pub error: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SummaryUpsertRequest {
+    pub status: String,
+    pub result: Option<String>,
+}

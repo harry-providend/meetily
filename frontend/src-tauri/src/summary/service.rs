@@ -1,6 +1,8 @@
-use crate::database::repositories::{
-    meeting::MeetingsRepository, setting::SettingsRepository, summary::SummaryProcessesRepository,
-};
+use crate::backend::client::{require_client, BackendError};
+use crate::backend::dto::SummaryProcessResponse;
+use crate::backend::meetings::MeetingsApi;
+use crate::backend::summaries::SummariesApi;
+use crate::database::repositories::setting::SettingsRepository;
 use crate::summary::llm_client::LLMProvider;
 use crate::summary::language_detection::detect_summary_language;
 use crate::summary::metadata::read_detected_summary_language_from_metadata;
@@ -225,13 +227,17 @@ impl SummaryService {
         }
     }
 
-    async fn read_detected_summary_language(
-        pool: &SqlitePool,
-        meeting_id: &str,
-    ) -> Option<String> {
-        let meeting = match MeetingsRepository::get_meeting_metadata(pool, meeting_id).await {
-            Ok(Some(meeting)) => meeting,
-            Ok(None) => {
+    async fn read_detected_summary_language(meeting_id: &str) -> Option<String> {
+        let client = match require_client() {
+            Ok(client) => client,
+            Err(e) => {
+                warn!("No backend available for detected summary language: {}", e);
+                return None;
+            }
+        };
+        let meeting = match MeetingsApi::new(&client).get(meeting_id).await {
+            Ok(meeting) => meeting,
+            Err(BackendError::NotFound) => {
                 warn!("Meeting not found while reading detected summary language: {}", meeting_id);
                 return None;
             }
@@ -315,7 +321,7 @@ impl SummaryService {
         let provider = match LLMProvider::from_str(&model_provider) {
             Ok(p) => p,
             Err(e) => {
-                Self::update_process_failed(&pool, &meeting_id, &e).await;
+                Self::update_process_failed(&meeting_id, &e).await;
                 return;
             }
         };
@@ -329,12 +335,12 @@ impl SummaryService {
                 Ok(Some(key)) if !key.is_empty() => key,
                 Ok(None) | Ok(Some(_)) => {
                     let err_msg = format!("API key not found for {}", &model_provider);
-                    Self::update_process_failed(&pool, &meeting_id, &err_msg).await;
+                    Self::update_process_failed(&meeting_id, &err_msg).await;
                     return;
                 }
                 Err(e) => {
                     let err_msg = format!("Failed to retrieve API key for {}: {}", &model_provider, e);
-                    Self::update_process_failed(&pool, &meeting_id, &err_msg).await;
+                    Self::update_process_failed(&meeting_id, &err_msg).await;
                     return;
                 }
             }
@@ -370,12 +376,12 @@ impl SummaryService {
                     }
                     Ok(None) => {
                         let err_msg = "Custom OpenAI provider selected but no configuration found";
-                        Self::update_process_failed(&pool, &meeting_id, err_msg).await;
+                        Self::update_process_failed(&meeting_id, err_msg).await;
                         return;
                     }
                     Err(e) => {
                         let err_msg = format!("Failed to retrieve custom OpenAI config: {}", e);
-                        Self::update_process_failed(&pool, &meeting_id, &err_msg).await;
+                        Self::update_process_failed(&meeting_id, &err_msg).await;
                         return;
                     }
                 }
@@ -444,7 +450,7 @@ impl SummaryService {
         }
 
         let detected_summary_language =
-            Self::read_detected_summary_language(&pool, &meeting_id)
+            Self::read_detected_summary_language(&meeting_id)
                 .await
                 .or_else(|| Self::detect_summary_language_from_text(&text));
 
@@ -456,7 +462,7 @@ impl SummaryService {
             Ok(template) => template,
             Err(e) => {
                 let err_msg = format!("Failed to load template '{}': {}", template_id, e);
-                Self::update_process_failed(&pool, &meeting_id, &err_msg).await;
+                Self::update_process_failed(&meeting_id, &err_msg).await;
                 return;
             }
         };
@@ -477,7 +483,7 @@ impl SummaryService {
             custom_openai_top_p,
         );
 
-        let cached_english = match SummaryProcessesRepository::get_summary_data(&pool, &meeting_id).await {
+        let cached_english = match Self::load_summary_process(&meeting_id).await {
             Err(e) => {
                 warn!(
                     "Failed to load prior summary row for cache lookup (meeting_id={}): {}. Falling back to full pass-1 generation.",
@@ -545,12 +551,9 @@ impl SummaryService {
                     .filter(|n| !n.is_empty())
                 {
                     info!("Extracted meeting name from summary: '{}'", name);
-                    if let Err(e) =
-                        MeetingsRepository::update_meeting_name(&pool, &meeting_id, &name).await
-                    {
-                        error!("Failed to update meeting name for {}: {}", meeting_id, e);
-                    } else {
-                        info!("Successfully updated meeting name for {}", meeting_id);
+                    match Self::rename_meeting(&meeting_id, &name).await {
+                        Err(e) => error!("Failed to update meeting name for {}: {}", meeting_id, e),
+                        Ok(()) => info!("Successfully updated meeting name for {}", meeting_id),
                     }
                 }
 
@@ -561,60 +564,82 @@ impl SummaryService {
                     summary_language.as_deref(),
                 );
 
-                // Update database with completed status
-                if let Err(e) = SummaryProcessesRepository::update_process_completed(
-                    &pool,
-                    &meeting_id,
-                    result_json,
-                    num_chunks,
-                    duration,
-                )
-                .await
+                // Completing the run is what archives the summary being replaced as a version.
+                if let Err(e) =
+                    Self::complete_process(&meeting_id, &result_json, num_chunks, duration).await
                 {
-                    error!(
-                        "Failed to save completed process for {}: {}",
-                        meeting_id, e
-                    );
+                    error!("Failed to save completed process for {}: {}", meeting_id, e);
                 } else {
-                    info!(
-                        "Summary saved successfully for meeting_id: {}",
-                        meeting_id
-                    );
+                    info!("Summary saved successfully for meeting_id: {}", meeting_id);
                 }
             }
             Err(e) => {
                 // Check if error is due to cancellation
                 if e.contains("cancelled") {
                     info!("Summary generation was cancelled for meeting_id: {}", meeting_id);
-                    if let Err(db_err) = SummaryProcessesRepository::update_process_cancelled(&pool, &meeting_id).await {
-                        error!("Failed to update DB status to cancelled for {}: {}", meeting_id, db_err);
+                    if let Err(backend_err) = Self::cancel_process(&meeting_id).await {
+                        error!(
+                            "Failed to update status to cancelled for {}: {}",
+                            meeting_id, backend_err
+                        );
                     }
                 } else {
-                    Self::update_process_failed(&pool, &meeting_id, &e).await;
+                    Self::update_process_failed(&meeting_id, &e).await;
                 }
             }
         }
     }
 
-    /// Updates the summary process status to failed with error message
-    ///
-    /// # Arguments
-    /// * `pool` - SQLx connection pool
-    /// * `meeting_id` - Meeting identifier
-    /// * `error_msg` - Error message to store
-    async fn update_process_failed(pool: &SqlitePool, meeting_id: &str, error_msg: &str) {
+    /// Ends the run as failed, restoring the summary it was replacing.
+    async fn update_process_failed(meeting_id: &str, error_msg: &str) {
         error!(
             "Processing failed for meeting_id {}: {}",
             meeting_id, error_msg
         );
-        if let Err(e) =
-            SummaryProcessesRepository::update_process_failed(pool, meeting_id, error_msg).await
-        {
-            error!(
-                "Failed to update DB status to failed for {}: {}",
-                meeting_id, e
-            );
+        let result = async {
+            let client = require_client()?;
+            SummariesApi::new(&client).fail(meeting_id, error_msg).await
         }
+        .await;
+        if let Err(e) = result {
+            error!("Failed to record failure for {}: {}", meeting_id, e);
+        }
+    }
+
+    async fn load_summary_process(
+        meeting_id: &str,
+    ) -> Result<Option<SummaryProcessResponse>, BackendError> {
+        let client = require_client()?;
+        SummariesApi::new(&client).get(meeting_id).await
+    }
+
+    async fn complete_process(
+        meeting_id: &str,
+        result_json: &serde_json::Value,
+        num_chunks: i64,
+        duration: f64,
+    ) -> Result<(), String> {
+        let serialized =
+            serde_json::to_string(result_json).map_err(|e| format!("serialise result: {e}"))?;
+        let client = require_client().map_err(|e| e.to_string())?;
+        SummariesApi::new(&client)
+            .complete(meeting_id, serialized, num_chunks, duration)
+            .await
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+
+    async fn cancel_process(meeting_id: &str) -> Result<(), BackendError> {
+        let client = require_client()?;
+        SummariesApi::new(&client).cancel(meeting_id).await.map(|_| ())
+    }
+
+    async fn rename_meeting(meeting_id: &str, title: &str) -> Result<(), BackendError> {
+        let client = require_client()?;
+        MeetingsApi::new(&client)
+            .rename(meeting_id, title)
+            .await
+            .map(|_| ())
     }
 }
 
