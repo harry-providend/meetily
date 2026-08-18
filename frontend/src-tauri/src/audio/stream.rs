@@ -3,7 +3,6 @@ use anyhow::Result;
 use cpal::traits::{DeviceTrait, StreamTrait};
 use cpal::{Device, Stream, SupportedStreamConfig};
 use log::{error, info, warn};
-use tokio::sync::mpsc;
 
 use super::devices::{AudioDevice, get_device_and_config};
 use super::pipeline::AudioCapture;
@@ -43,11 +42,10 @@ impl AudioStream {
         device: Arc<AudioDevice>,
         state: Arc<RecordingState>,
         device_type: DeviceType,
-        recording_sender: Option<mpsc::UnboundedSender<super::recording_state::AudioChunk>>,
     ) -> Result<Self> {
         // Get current backend from global config
         let backend_type = get_current_backend();
-        Self::create_with_backend(device, state, device_type, recording_sender, backend_type).await
+        Self::create_with_backend(device, state, device_type, backend_type).await
     }
 
     /// Create a new audio stream with explicit backend selection
@@ -55,7 +53,6 @@ impl AudioStream {
         device: Arc<AudioDevice>,
         state: Arc<RecordingState>,
         device_type: DeviceType,
-        recording_sender: Option<mpsc::UnboundedSender<super::recording_state::AudioChunk>>,
         backend_type: AudioCaptureBackend,
     ) -> Result<Self> {
         info!("🎵 Stream: Creating audio stream for device: {} with backend: {:?}, device_type: {:?}",
@@ -84,7 +81,7 @@ impl AudioStream {
         #[cfg(target_os = "macos")]
         if use_core_audio {
             info!("🎵 Stream: Using Core Audio backend (cidre) for system audio");
-            return Self::create_core_audio_stream(device, state, device_type, recording_sender).await;
+            return Self::create_core_audio_stream(device, state, device_type).await;
         }
 
         // Default path: use CPAL
@@ -99,7 +96,7 @@ impl AudioStream {
         let backend_name = "CPAL";
 
         info!("🎵 Stream: Using CPAL backend ({}) for device: {}", backend_name, device.name);
-        Self::create_cpal_stream(device, state, device_type, recording_sender).await
+        Self::create_cpal_stream(device, state, device_type).await
     }
 
     /// Create a CPAL-based stream (ScreenCaptureKit on macOS)
@@ -107,7 +104,6 @@ impl AudioStream {
         device: Arc<AudioDevice>,
         state: Arc<RecordingState>,
         device_type: DeviceType,
-        recording_sender: Option<mpsc::UnboundedSender<super::recording_state::AudioChunk>>,
     ) -> Result<Self> {
         info!("Creating CPAL stream for device: {}", device.name);
 
@@ -124,7 +120,6 @@ impl AudioStream {
             config.sample_rate().0,
             config.channels(),
             device_type,
-            recording_sender,
         );
 
         // Build the appropriate stream based on sample format
@@ -146,7 +141,6 @@ impl AudioStream {
         device: Arc<AudioDevice>,
         state: Arc<RecordingState>,
         device_type: DeviceType,
-        recording_sender: Option<mpsc::UnboundedSender<super::recording_state::AudioChunk>>,
     ) -> Result<Self> {
         info!("🔊 Stream: Creating Core Audio stream for device: {}", device.name);
 
@@ -176,7 +170,6 @@ impl AudioStream {
             sample_rate,
             1, // Core Audio tap is MONO (not stereo!)
             device_type,
-            recording_sender,
         );
 
         // Spawn task to process Core Audio stream samples
@@ -394,15 +387,8 @@ impl AudioStreamManager {
             tokio::time::sleep(tokio::time::Duration::from_millis(150)).await;
         }
 
-        // `recording_sender` is None here to match the live start path: streams feed the
-        // pipeline, and the pipeline is what forwards mixed audio to the recording saver.
-        match AudioStream::create(
-            new_device.clone(),
-            self.state.clone(),
-            DeviceType::Microphone,
-            None,
-        )
-        .await
+        match AudioStream::create(new_device.clone(), self.state.clone(), DeviceType::Microphone)
+            .await
         {
             Ok(stream) => {
                 self.state.set_microphone_device(new_device);
@@ -422,7 +408,6 @@ impl AudioStreamManager {
         &mut self,
         microphone_device: Option<Arc<AudioDevice>>,
         system_device: Option<Arc<AudioDevice>>,
-        recording_sender: Option<mpsc::UnboundedSender<super::recording_state::AudioChunk>>,
     ) -> Result<()> {
         use super::capture::get_current_backend;
         let backend = get_current_backend();
@@ -431,7 +416,7 @@ impl AudioStreamManager {
         // Start microphone stream
         if let Some(mic_device) = microphone_device {
             info!("🎤 Creating microphone stream: {} (always uses CPAL)", mic_device.name);
-            match AudioStream::create(mic_device.clone(), self.state.clone(), DeviceType::Microphone, recording_sender.clone()).await {
+            match AudioStream::create(mic_device.clone(), self.state.clone(), DeviceType::Microphone).await {
                 Ok(stream) => {
                     self.state.set_microphone_device(mic_device);
                     self.microphone_stream = Some(stream);
@@ -449,7 +434,7 @@ impl AudioStreamManager {
         // Start system audio stream
         if let Some(sys_device) = system_device {
             info!("🔊 Creating system audio stream: {} (backend: {:?})", sys_device.name, backend);
-            match AudioStream::create(sys_device.clone(), self.state.clone(), DeviceType::System, recording_sender.clone()).await {
+            match AudioStream::create(sys_device.clone(), self.state.clone(), DeviceType::System).await {
                 Ok(stream) => {
                     self.state.set_system_device(sys_device);
                     self.system_stream = Some(stream);
