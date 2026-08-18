@@ -69,9 +69,25 @@ not. Absent and not-yours are both `404`.
 | GET/PUT | `/api/v1/meetings/{id}/summary` | Upsert; overwriting archives the previous result. |
 | GET | `/api/v1/meetings/{id}/summary/versions[/{version}]` | As above, for summaries. |
 | GET/PUT | `/api/v1/meetings/{id}/notes` | |
+| POST | `.../transcript/versions/{version}/restore` | Archives the current transcript, then swaps the version in. One request, because splitting archive-then-replace could leave a meeting with nothing. |
+| POST | `.../summary/generation` | Starts a run, stashing the current summary in `result_backup`. |
+| POST | `.../summary/generation/complete` | Stores the result and turns the stash into a version. |
+| POST | `.../summary/generation/fail`, `.../cancel` | Restores the stash. No version is created for a run that produced nothing. |
+| POST | `.../summary/versions/{version}/restore` | As for transcripts; the restore is itself archived. |
 | GET | `/api/v1/transcripts/search` | `query` (required), `limit` (max 200). Cross-meeting, owner-scoped, returns match context. |
-| GET/PUT | `/api/v1/templates`, GET/DELETE `/api/v1/templates/{id}` | A NULL `owner_tenant_id` marks a builtin; builtins are not deletable. |
+| GET/PUT | `/api/v1/templates` | Per user. Builtins sort first. PUT records a user edit. |
+| GET/DELETE | `/api/v1/templates/{id}` | Builtins cannot be deleted (409) -- they are reset. |
+| POST | `/api/v1/templates/seed` | The app posts its bundled templates at startup. Re-applies shipped content to builtins, never over a user edit. |
+| POST | `/api/v1/templates/import` | One-time legacy import; writes only absent ids. |
+| POST | `/api/v1/templates/{id}/reset` | Clears `user_modified`, so the next seed restores the shipped content. |
 | POST/GET | `/api/v1/sync/push`, `/api/v1/sync/pull` | Last-writer-wins, idempotent on `client_entry_id`. |
+
+### Where content comes from
+
+The app owns shipped template definitions -- they live in its bundle -- and the server owns which
+rows exist and whether the user has edited them. That is why seeding is a POST *from* the app
+rather than a fixture here: the server never has to know what version of the app is talking to it.
+
 
 ## Running locally
 

@@ -9,14 +9,22 @@ from app.db.base import Base
 
 
 class SummaryTemplateEntity(Base):
-    """Not meeting-scoped. owner_tenant_id is nullable: NULL means a global/builtin template,
-    a value means a tenant authored it -- so per-tenant templates need no schema change later."""
+    """Not meeting-scoped, but owned: each user gets their own copies, which is what the desktop
+    app's device-local table amounted to. Sharing a template across a tenant later means widening
+    the read filter, not changing this shape.
+
+    is_builtin marks a template shipped with the app; user_modified marks one the user has edited.
+    Together they drive seeding: startup re-applies shipped content to builtins, but never over an
+    edit, and clearing user_modified is what "reset to the shipped version" means.
+    """
 
     __tablename__ = "summary_templates"
     __table_args__ = (Index("ix_summary_templates_updated_at", "updated_at"),)
 
+    # Owner first, so "every template for this owner" is a prefix scan of the primary key.
+    owner_tenant_id: Mapped[str] = mapped_column(String, primary_key=True)
+    owner_user_id: Mapped[str] = mapped_column(String, primary_key=True)
     id: Mapped[str] = mapped_column(String, primary_key=True)
-    owner_tenant_id: Mapped[str | None] = mapped_column(String, nullable=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     sections_json: Mapped[dict[str, JsonValue] | list[JsonValue]] = mapped_column(
