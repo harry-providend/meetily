@@ -1,8 +1,6 @@
-//! Single-shot loopback listener that catches the Entra redirect.
-//!
-//! Hand-rolled rather than pulling in an HTTP server -- it serves one request and
-//! stops. Entra ignores the port for `http://localhost`, so port 0 avoids
-//! contending over a fixed one.
+//! Single-shot loopback listener for the Entra redirect. Hand-rolled rather than pulling in an
+//! HTTP server: it serves one request and stops. Port 0 because Entra ignores the port for
+//! `http://localhost`.
 
 use anyhow::{anyhow, bail, Context, Result};
 use std::io::{Read, Write};

@@ -39,13 +39,9 @@ impl Default for RecordingPreferences {
     }
 }
 
-/// Get the default recordings folder based on platform.
-///
-/// The folder name is per-environment (see [`crate::environment`]). Recordings
-/// live outside the application-data directory, so unlike the database and
-/// models they are not isolated automatically by the bundle identifier and need
-/// the suffix applied here. Production keeps the original unsuffixed name so
-/// existing recordings are not orphaned.
+/// Get the default recordings folder based on platform. The name is per-environment: recordings
+/// live outside the app-data directory, so the identifier does not isolate them automatically.
+/// Production keeps the unsuffixed name so existing recordings are not orphaned.
 pub fn get_default_recordings_folder() -> PathBuf {
     let folder = crate::environment::Environment::current().recordings_dir_name();
 

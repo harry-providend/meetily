@@ -15,9 +15,8 @@ if (!command || !['dev', 'build'].includes(command)) {
   process.exit(1);
 }
 
-// Which environment to run as. `dev` runs default to the dev environment so a
-// local run cannot touch production data; builds default to prod so an
-// unqualified release build is the expected artifact.
+// `dev` runs default to the dev environment so a local run cannot touch production data;
+// builds default to prod so an unqualified release build is the expected artifact.
 const ENVIRONMENTS = ['dev', 'staging', 'prod'];
 const targetEnv =
   process.argv[3] || process.env.MEETILY_ENV || (command === 'dev' ? 'dev' : 'prod');

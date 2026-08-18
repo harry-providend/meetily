@@ -1,7 +1,5 @@
-//! Session state, stored in the OS keychain.
-//!
-//! Tokens are bearer credentials, so they never go to a plaintext store and never
-//! cross into the webview -- the frontend gets [`SessionInfo`], identity only.
+//! Session state in the OS keychain. Tokens are bearer credentials, so they never go to a
+//! plaintext store and never cross into the webview -- the frontend gets identity only.
 
 use anyhow::{Context, Result};
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -118,12 +116,9 @@ fn entry() -> Result<Entry> {
         .context("failed to open the OS keychain entry for sign-in")
 }
 
-/// Reads identity claims from an ID token.
-///
-/// The signature is not verified: the token came over TLS straight from Entra's
-/// token endpoint in exchange for our PKCE verifier, and the claims only display
-/// who is signed in. A server accepting tokens from untrusted callers must verify
-/// against JWKS -- that belongs to the backend.
+/// Reads identity claims from an ID token. The signature is not verified: it came over TLS
+/// straight from Entra in exchange for our PKCE verifier, and the claims only drive display.
+/// JWKS verification belongs to the backend, which accepts tokens from untrusted callers.
 pub fn account_from_id_token(id_token: &str) -> Result<Account> {
     let payload = id_token
         .split('.')
@@ -148,9 +143,8 @@ pub fn account_from_id_token(id_token: &str) -> Result<Account> {
     let claims: Claims =
         serde_json::from_slice(&decoded).context("ID token payload is not valid JSON")?;
 
-    // Prefer oid: it is the stable per-tenant user identifier. sub is only
-    // stable per (user, application) pair, so it would break if we ever add a
-    // second app registration.
+    // Prefer oid: stable per tenant, whereas sub is only stable per (user, application) and
+    // would break if a second app registration is ever added.
     let oid = claims
         .oid
         .or(claims.sub)

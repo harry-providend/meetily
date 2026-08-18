@@ -1,10 +1,6 @@
-//! Bakes `.env.<name>` into the binary at compile time -- an installed app has no
-//! `.env` beside it to read.
-//!
-//! All three environments are baked in; the running one is chosen at runtime from
-//! the bundle identifier, so the target env need not be known at compile time.
-//!
-//! Non-secret configuration only. See each file's header.
+//! Bakes `.env.<name>` into the binary -- an installed app has no `.env` beside it. All three
+//! are baked in and chosen at runtime from the bundle identifier, so the target env need not be
+//! known at compile time. Non-secret configuration only.
 
 use std::collections::HashMap;
 use std::fs;

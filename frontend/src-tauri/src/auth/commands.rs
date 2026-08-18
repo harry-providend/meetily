@@ -1,8 +1,5 @@
-//! Tauri commands for sign-in.
-//!
-//! A *stored* session counts as signed in even with an expired access token, so
-//! the app keeps working offline; refresh is opportunistic and its failure is not
-//! fatal. This gates app entry, not data access -- local data stays on disk.
+//! Tauri commands for sign-in. A stored session counts as signed in even with an expired access
+//! token, so refresh is opportunistic and its failure is not fatal.
 
 use tauri::command;
 use tracing::{info, warn};
@@ -76,10 +73,8 @@ pub async fn auth_sign_out() -> Result<SessionInfo, String> {
     Ok(SessionInfo::signed_out(AuthConfig::is_configured()))
 }
 
-/// Returns a usable access token, refreshing if needed.
-///
-/// Deliberately not a Tauri command -- tokens must not reach the webview. This is
-/// the seam the Phase 2 backend client will use.
+/// Returns a usable access token, refreshing if needed. Deliberately not a Tauri command:
+/// tokens must not reach the webview. This is the seam the backend client uses.
 #[allow(dead_code)]
 pub async fn access_token() -> anyhow::Result<String> {
     use anyhow::Context;

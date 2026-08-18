@@ -1,7 +1,5 @@
-//! Entra authorization-code + PKCE flow.
-//!
-//! Uses the *system* browser, not an embedded webview: the user sees the genuine
-//! Microsoft origin and tenant MFA / Conditional Access apply.
+//! Entra authorization-code + PKCE flow. Uses the *system* browser, not an embedded webview, so
+//! the user sees the genuine Microsoft origin and tenant MFA / Conditional Access apply.
 
 use anyhow::{bail, Context, Result};
 use chrono::{Duration, Utc};
