@@ -2,7 +2,6 @@
 
 use std::time::Duration;
 
-use anyhow::{anyhow, Context, Result};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
@@ -204,12 +203,4 @@ impl BackendClient {
 /// Builds a client or explains why it could not be built.
 pub fn require_client() -> Result<BackendClient, BackendError> {
     BackendClient::for_current_environment().ok_or(BackendError::NotConfigured)
-}
-
-/// Convenience for call sites that want anyhow rather than [`BackendError`].
-#[allow(dead_code)]
-pub fn client_or_anyhow() -> Result<BackendClient> {
-    BackendClient::for_current_environment()
-        .ok_or_else(|| anyhow!("no backend configured"))
-        .context("backend client")
 }

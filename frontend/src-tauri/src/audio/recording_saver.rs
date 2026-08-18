@@ -380,14 +380,13 @@ impl RecordingSaver {
         }
 
         // Finalize incremental saver (merge checkpoints into final audio.mp4)
-        let mut written_duration: Option<f64> = None;
-        let final_audio_path = if let Some(saver_arc) = &self.incremental_saver {
+        let (written_duration, final_audio_path) = if let Some(saver_arc) = &self.incremental_saver {
             let mut saver = saver_arc.lock().await;
-            written_duration = Some(saver.duration_seconds());
+            let written = saver.duration_seconds();
             match saver.finalize().await {
                 Ok(path) => {
                     info!("✅ Successfully finalized audio: {}", path.display());
-                    path
+                    (Some(written), path)
                 }
                 Err(e) => {
                     error!("❌ Failed to finalize incremental saver: {}", e);
