@@ -4,3 +4,5 @@
 
 pub mod client;
 pub mod commands;
+pub mod dto;
+pub mod meetings;

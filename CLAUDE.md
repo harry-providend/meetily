@@ -72,7 +72,7 @@ The archived FastAPI service had unauthenticated, development-oriented CORS beha
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-The current app does not require a separate FastAPI tier. Meeting persistence, local transcription, and summary orchestration are handled through the Rust/Tauri core.
+Meetings, transcripts, and summaries are persisted by the `/server` FastAPI backend (see [server/README.md](server/README.md)), not in local SQLite. Audio capture, transcription, and summary generation still run on-device; the Rust core calls the backend to store the results. This is separate from the archived `/backend`.
 
 ### Audio Processing Pipeline (Critical Understanding)
 
@@ -370,7 +370,7 @@ $env:RUST_LOG="debug"; ./clean_run_windows.bat
 
 3. **Whisper Model Loading**: Models are loaded once and cached. Changing models requires app restart or manual unload/reload.
 
-4. **No Separate Backend Dependency**: Meeting persistence, transcription, and LLM features are handled by the Tauri app. Do not reintroduce the archived FastAPI backend as a supported requirement.
+4. **Meeting data lives in `/server`, not SQLite**: meetings, transcripts, and summaries are read and written over HTTP against `/server`, which scopes everything to the signed-in user's Entra `oid`/`tid`. Local SQLite retains only device state (settings, downloaded models). Transcription and audio capture remain on-device. Do not reintroduce the archived `/backend` FastAPI service — it is unrelated.
 
 5. **Legacy FastAPI Security Context**: The archived FastAPI/CORS behavior is unsupported legacy code and must not be treated as a supported production API.
 
@@ -394,7 +394,8 @@ $env:RUST_LOG="debug"; ./clean_run_windows.bat
 **Core Coordination**:
 - [frontend/src-tauri/src/lib.rs](frontend/src-tauri/src/lib.rs) - Main Tauri entry point, command registration
 - [frontend/src-tauri/src/audio/mod.rs](frontend/src-tauri/src/audio/mod.rs) - Audio module exports
-- [frontend/src-tauri/src/database/mod.rs](frontend/src-tauri/src/database/mod.rs) - Local database module
+- [frontend/src-tauri/src/database/mod.rs](frontend/src-tauri/src/database/mod.rs) - Local database module (device state; meeting data lives in `/server`)
+- [frontend/src-tauri/src/backend/](frontend/src-tauri/src/backend/) - Authenticated client for `/server`
 
 **Audio System**:
 - [frontend/src-tauri/src/audio/recording_manager.rs](frontend/src-tauri/src/audio/recording_manager.rs) - Recording orchestration

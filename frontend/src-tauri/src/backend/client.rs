@@ -21,6 +21,9 @@ pub enum BackendError {
     /// The server rejected our token. Usually the access token's audience is wrong, which means
     /// the app is not requesting the API scope (see `auth::config::api_scope`).
     Unauthorized(String),
+    /// No such resource for this user. The server does not distinguish "absent" from "someone
+    /// else's", deliberately, so neither can we.
+    NotFound,
     /// Any other transport or server-side failure.
     Failed(String),
 }
@@ -31,6 +34,7 @@ impl std::fmt::Display for BackendError {
             Self::NotConfigured => write!(f, "no backend is configured for this environment"),
             Self::NotAuthenticated(m) => write!(f, "not signed in: {m}"),
             Self::Unauthorized(m) => write!(f, "backend rejected the token: {m}"),
+            Self::NotFound => write!(f, "not found"),
             Self::Failed(m) => write!(f, "backend request failed: {m}"),
         }
     }
@@ -58,7 +62,22 @@ impl BackendClient {
 
     /// GET a JSON resource, authenticated.
     pub async fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T, BackendError> {
-        self.send::<(), T>(reqwest::Method::GET, path, None).await
+        self.get_with_query(path, &[]).await
+    }
+
+    /// GET with query parameters. reqwest percent-encodes them, so values may contain anything.
+    pub async fn get_with_query<T: DeserializeOwned>(
+        &self,
+        path: &str,
+        query: &[(&str, String)],
+    ) -> Result<T, BackendError> {
+        let (url, response) = self
+            .dispatch::<()>(reqwest::Method::GET, path, None, query)
+            .await?;
+        response
+            .json::<T>()
+            .await
+            .map_err(|e| BackendError::Failed(format!("{url} returned undecodable JSON: {e}")))
     }
 
     /// POST a JSON body and decode the JSON response, authenticated.
@@ -68,6 +87,32 @@ impl BackendClient {
         body: &B,
     ) -> Result<T, BackendError> {
         self.send::<B, T>(reqwest::Method::POST, path, Some(body))
+            .await
+    }
+
+    /// PUT a JSON body and decode the JSON response, authenticated.
+    pub async fn put<B: Serialize, T: DeserializeOwned>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> Result<T, BackendError> {
+        self.send::<B, T>(reqwest::Method::PUT, path, Some(body))
+            .await
+    }
+
+    /// PATCH a JSON body and decode the JSON response, authenticated.
+    pub async fn patch<B: Serialize, T: DeserializeOwned>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> Result<T, BackendError> {
+        self.send::<B, T>(reqwest::Method::PATCH, path, Some(body))
+            .await
+    }
+
+    /// DELETE a resource, authenticated. The server answers 204, so there is nothing to decode.
+    pub async fn delete(&self, path: &str) -> Result<(), BackendError> {
+        self.send_discarding_body::<()>(reqwest::Method::DELETE, path, None)
             .await
     }
 
@@ -98,12 +143,40 @@ impl BackendClient {
         path: &str,
         body: Option<&B>,
     ) -> Result<T, BackendError> {
+        let (url, response) = self.dispatch(method, path, body, &[]).await?;
+        response
+            .json::<T>()
+            .await
+            .map_err(|e| BackendError::Failed(format!("{url} returned undecodable JSON: {e}")))
+    }
+
+    async fn send_discarding_body<B: Serialize>(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<&B>,
+    ) -> Result<(), BackendError> {
+        self.dispatch(method, path, body, &[]).await.map(|_| ())
+    }
+
+    /// Sends the request and classifies the status. Returns the URL alongside the response so
+    /// callers can name it in their own errors.
+    async fn dispatch<B: Serialize>(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<&B>,
+        query: &[(&str, String)],
+    ) -> Result<(String, reqwest::Response), BackendError> {
         let token = access_token()
             .await
             .map_err(|e| BackendError::NotAuthenticated(e.to_string()))?;
 
         let url = format!("{}{}", self.base_url, path);
         let mut request = self.http.request(method, &url).bearer_auth(token);
+        if !query.is_empty() {
+            request = request.query(query);
+        }
         if let Some(body) = body {
             request = request.json(body);
         }
@@ -118,15 +191,17 @@ impl BackendClient {
             let detail = response.text().await.unwrap_or_default();
             return Err(BackendError::Unauthorized(detail));
         }
+        if status == reqwest::StatusCode::NOT_FOUND {
+            return Err(BackendError::NotFound);
+        }
         if !status.is_success() {
             let detail = response.text().await.unwrap_or_default();
-            return Err(BackendError::Failed(format!("{url} returned {status}: {detail}")));
+            return Err(BackendError::Failed(format!(
+                "{url} returned {status}: {detail}"
+            )));
         }
 
-        response
-            .json::<T>()
-            .await
-            .map_err(|e| BackendError::Failed(format!("{url} returned undecodable JSON: {e}")))
+        Ok((url, response))
     }
 }
 

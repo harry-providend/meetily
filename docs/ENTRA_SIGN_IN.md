@@ -1,17 +1,19 @@
 # Entra ID sign-in and environments
 
-Client-side Microsoft sign-in. No backend yet — Entra authenticates the user
-directly with the app.
+Client-side Microsoft sign-in. The app obtains tokens from Entra directly and
+presents them to `/server`, which validates them and holds the meeting data.
 
 ## What this does and does not do
 
 **Does:** gates app entry behind a Providend account and gives the app the user's
 identity (stable object ID, tenant, name, email).
 
-**Does not:** enforce access to data. The app is local-first and works offline, so
-a stored session and local meetings stay reachable. An offboarded user with the
-app installed is not hard-stopped by this alone. Real enforcement needs the server
-holding the data (Phase 2).
+**Does not:** by itself enforce access to data — that is the server's job. Sign-in
+yields an access token whose audience is our API scope, and `/server` scopes every
+read and write to the token's `oid`/`tid`. Meetings, transcripts and summaries live
+there, so revoking the account cuts off the data. What stays on the device is
+machine state (downloaded models, audio device preferences) and the recordings
+themselves, which are not yet uploaded.
 
 ## Environments
 
@@ -56,7 +58,7 @@ Per-environment values live in `src-tauri/.env.dev`, `.env.staging`, `.env.prod`
 ```
 AUTH_TENANT_ID=
 AUTH_CLIENT_ID=
-API_BASE_URL=        # unused until Phase 2
+API_BASE_URL=        # /server base URL; MEETILY_API_BASE_URL overrides at runtime
 ```
 
 These are committed and baked into the binary by `build.rs` at compile time — an

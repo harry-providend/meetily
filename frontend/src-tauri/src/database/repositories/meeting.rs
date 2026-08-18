@@ -1,52 +1,11 @@
 use crate::api::{MeetingDetails, MeetingTranscript};
 use crate::database::models::{MeetingModel, Transcript};
 use chrono::Utc;
-use sqlx::{Connection, Error as SqlxError, SqliteConnection, SqlitePool};
-use tracing::{error, info};
+use sqlx::{Connection, Error as SqlxError, SqlitePool};
 
 pub struct MeetingsRepository;
 
 impl MeetingsRepository {
-    pub async fn get_meetings(pool: &SqlitePool) -> Result<Vec<MeetingModel>, sqlx::Error> {
-        let meetings =
-            sqlx::query_as::<_, MeetingModel>("SELECT * FROM meetings ORDER BY created_at DESC")
-                .fetch_all(pool)
-                .await?;
-        Ok(meetings)
-    }
-
-    pub async fn delete_meeting(pool: &SqlitePool, meeting_id: &str) -> Result<bool, SqlxError> {
-        if meeting_id.trim().is_empty() {
-            return Err(SqlxError::Protocol(
-                "meeting_id cannot be empty".to_string(),
-            ));
-        }
-
-        let mut conn = pool.acquire().await?;
-        let mut transaction = conn.begin().await?;
-
-        match delete_meeting_with_transaction(&mut transaction, meeting_id).await {
-            Ok(success) => {
-                if success {
-                    transaction.commit().await?;
-                    info!(
-                        "Successfully deleted meeting {} and all associated data",
-                        meeting_id
-                    );
-                    Ok(true)
-                } else {
-                    transaction.rollback().await?;
-                    Ok(false)
-                }
-            }
-            Err(e) => {
-                let _ = transaction.rollback().await;
-                error!("Failed to delete meeting {}: {}", meeting_id, e);
-                Err(e)
-            }
-        }
-    }
-
     pub async fn get_meeting(
         pool: &SqlitePool,
         meeting_id: &str,
@@ -128,74 +87,6 @@ impl MeetingsRepository {
         Ok(meeting)
     }
 
-    /// Get meeting transcripts with pagination support
-    pub async fn get_meeting_transcripts_paginated(
-        pool: &SqlitePool,
-        meeting_id: &str,
-        limit: i64,
-        offset: i64,
-    ) -> Result<(Vec<Transcript>, i64), SqlxError> {
-        if meeting_id.trim().is_empty() {
-            return Err(SqlxError::Protocol(
-                "meeting_id cannot be empty".to_string(),
-            ));
-        }
-
-        // Get total count of transcripts for this meeting
-        let total: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM transcripts WHERE meeting_id = ?"
-        )
-        .bind(meeting_id)
-        .fetch_one(pool)
-        .await?;
-
-        // Get paginated transcripts ordered by audio_start_time
-        let transcripts = sqlx::query_as::<_, Transcript>(
-            "SELECT * FROM transcripts
-             WHERE meeting_id = ?
-             ORDER BY audio_start_time ASC
-             LIMIT ? OFFSET ?"
-        )
-        .bind(meeting_id)
-        .bind(limit)
-        .bind(offset)
-        .fetch_all(pool)
-        .await?;
-
-        Ok((transcripts, total.0))
-    }
-
-    pub async fn update_meeting_title(
-        pool: &SqlitePool,
-        meeting_id: &str,
-        new_title: &str,
-    ) -> Result<bool, SqlxError> {
-        if meeting_id.trim().is_empty() {
-            return Err(SqlxError::Protocol(
-                "meeting_id cannot be empty".to_string(),
-            ));
-        }
-
-        let mut conn = pool.acquire().await?;
-        let mut transaction = conn.begin().await?;
-
-        let now = Utc::now().naive_utc();
-
-        let rows_affected =
-            sqlx::query("UPDATE meetings SET title = ?, updated_at = ? WHERE id = ?")
-                .bind(new_title)
-                .bind(now)
-                .bind(meeting_id)
-                .execute(&mut *transaction)
-                .await?;
-        if rows_affected.rows_affected() == 0 {
-            transaction.rollback().await?;
-            return Ok(false);
-        }
-        transaction.commit().await?;
-        Ok(true)
-    }
-
     pub async fn update_meeting_name(
         pool: &SqlitePool,
         meeting_id: &str,
@@ -228,54 +119,4 @@ impl MeetingsRepository {
         transaction.commit().await?;
         Ok(true)
     }
-}
-
-async fn delete_meeting_with_transaction(
-    transaction: &mut SqliteConnection,
-    meeting_id: &str,
-) -> Result<bool, SqlxError> {
-    // Check if meeting exists
-    let meeting_exists: Option<(i64,)> = sqlx::query_as("SELECT 1 FROM meetings WHERE id = ?")
-        .bind(meeting_id)
-        .fetch_optional(&mut *transaction)
-        .await?;
-
-    if meeting_exists.is_none() {
-        error!("Meeting {} not found for deletion", meeting_id);
-        return Ok(false);
-    }
-
-    // Delete from related tables in proper order
-    // 1. Delete from transcript_chunks
-    sqlx::query("DELETE FROM transcript_chunks WHERE meeting_id = ?")
-        .bind(meeting_id)
-        .execute(&mut *transaction)
-        .await?;
-
-    // 2. Delete from summary_processes
-    sqlx::query("DELETE FROM summary_processes WHERE meeting_id = ?")
-        .bind(meeting_id)
-        .execute(&mut *transaction)
-        .await?;
-
-    // 3. Delete from transcripts
-    sqlx::query("DELETE FROM transcripts WHERE meeting_id = ?")
-        .bind(meeting_id)
-        .execute(&mut *transaction)
-        .await?;
-
-    // 3b. Delete archived versions of both
-    crate::database::repositories::version::VersionsRepository::delete_for_meeting(
-        &mut *transaction,
-        meeting_id,
-    )
-    .await?;
-
-    // 4. Finally, delete the meeting
-    let result = sqlx::query("DELETE FROM meetings WHERE id = ?")
-        .bind(meeting_id)
-        .execute(&mut *transaction)
-        .await?;
-
-    Ok(result.rows_affected() > 0)
 }
