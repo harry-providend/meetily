@@ -1,6 +1,8 @@
 // Audio file import module - allows importing external audio files as new meetings
 
-use crate::api::TranscriptSegment;
+use crate::api::{into_segment_request, TranscriptSegment};
+use crate::backend::client::require_client;
+use crate::backend::meetings::MeetingsApi;
 use crate::audio::decoder::{decode_audio_file, decode_audio_file_with_progress};
 use crate::audio::vad::get_speech_chunks_with_progress;
 use crate::config::{DEFAULT_WHISPER_MODEL, DEFAULT_PARAKEET_MODEL};
@@ -633,12 +635,7 @@ async fn run_import<R: Runtime>(
     let segments = create_transcript_segments(&all_transcripts);
 
     // Save to database
-    let app_state = app
-        .try_state::<AppState>()
-        .ok_or_else(|| anyhow!("App state not available"))?;
-
     let meeting_id = create_meeting_with_transcripts(
-        app_state.db_manager.pool(),
         &title,
         &segments,
         meeting_folder.to_string_lossy().to_string(),
@@ -686,65 +683,35 @@ fn emit_progress<R: Runtime>(app: &AppHandle<R>, stage: &str, progress: u32, mes
 }
 
 
-/// Create a new meeting with transcripts in the database
+/// Create a new meeting with its transcripts on the backend
 async fn create_meeting_with_transcripts(
-    pool: &sqlx::SqlitePool,
     title: &str,
     segments: &[TranscriptSegment],
     folder_path: String,
 ) -> Result<String> {
+    // Generated here so a lost response makes a retry an update rather than a second meeting.
     let meeting_id = format!("meeting-{}", Uuid::new_v4());
-    let now = chrono::Utc::now();
 
-    // Start transaction
-    let mut conn = pool.acquire().await.map_err(|e| anyhow!("DB error: {}", e))?;
-    let mut tx = sqlx::Connection::begin(&mut *conn)
-        .await
-        .map_err(|e| anyhow!("Failed to start transaction: {}", e))?;
-
-    // Insert meeting
-    sqlx::query(
-        "INSERT INTO meetings (id, title, created_at, updated_at, folder_path)
-         VALUES (?, ?, ?, ?, ?)",
-    )
-    .bind(&meeting_id)
-    .bind(title)
-    .bind(now)
-    .bind(now)
-    .bind(&folder_path)
-    .execute(&mut *tx)
-    .await
-    .map_err(|e| anyhow!("Failed to create meeting: {}", e))?;
-
-    // Insert transcripts
-    for segment in segments {
-        sqlx::query(
-            "INSERT INTO transcripts (id, meeting_id, transcript, timestamp, audio_start_time, audio_end_time, duration)
-             VALUES (?, ?, ?, ?, ?, ?, ?)",
+    // One request, so the meeting and its transcript land together or not at all -- the same
+    // guarantee the local transaction gave.
+    let client = require_client().map_err(|e| anyhow!("{}", e))?;
+    let created = MeetingsApi::new(&client)
+        .create(
+            &meeting_id,
+            title,
+            Some(folder_path),
+            segments.iter().cloned().map(into_segment_request).collect(),
         )
-        .bind(&segment.id)
-        .bind(&meeting_id)
-        .bind(&segment.text)
-        .bind(&segment.timestamp)
-        .bind(segment.audio_start_time)
-        .bind(segment.audio_end_time)
-        .bind(segment.duration)
-        .execute(&mut *tx)
         .await
-        .map_err(|e| anyhow!("Failed to insert transcript: {}", e))?;
-    }
-
-    tx.commit()
-        .await
-        .map_err(|e| anyhow!("Failed to commit transaction: {}", e))?;
+        .map_err(|e| anyhow!("Failed to create meeting: {}", e))?;
 
     info!(
         "Created meeting '{}' with {} transcripts",
-        meeting_id,
+        created.id,
         segments.len()
     );
 
-    Ok(meeting_id)
+    Ok(created.id)
 }
 
 /// Get or initialize the Whisper engine
