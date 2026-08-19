@@ -62,6 +62,14 @@ pub async fn auth_sign_in() -> Result<SessionInfo, String> {
             .unwrap_or(&session.account.oid)
     );
 
+    // Startup seeding runs before anyone is signed in, so its push is rejected. Retry now that
+    // there is a token.
+    tauri::async_runtime::spawn(async {
+        if let Err(e) = crate::summary::templates::seed_templates().await {
+            warn!("Failed to seed summary templates after sign-in: {}", e);
+        }
+    });
+
     Ok(session.info(true))
 }
 

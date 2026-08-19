@@ -514,6 +514,14 @@ pub fn run() {
             })
             .expect("Failed to initialize database");
 
+            // Spawned, never awaited here: this reaches the backend, and setup runs on the main
+            // thread, which the tray menu also needs before it can be built.
+            tauri::async_runtime::spawn(async {
+                if let Err(e) = summary::templates::seed_templates().await {
+                    log::warn!("Failed to seed summary templates: {}", e);
+                }
+            });
+
             Ok(())
         })
         .on_window_event(|window, event| {
